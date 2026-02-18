@@ -1,0 +1,45 @@
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables (contains sensitive data)
+.env
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Database
+database.sqlite
+*.db
+*.sqlite
+
+# Tool caches
+.ruff_cache/
+.crush/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python version file
+.python-version
+
+# Logs
+*.log
