@@ -47,10 +47,12 @@ def main() -> None:
     application.add_handler(CommandHandler("resume", resume))
     application.add_handler(CommandHandler("image", search_image))
     # Image search callback
-    application.add_handler(CallbackQueryHandler(search_image_callback, pattern="^search_image:"))
+    application.add_handler(
+        CallbackQueryHandler(search_image_callback, pattern="^search_image:")
+    )
     # Bot mentioned
     application.add_handler(
-        MessageHandler(filters.Entity("mention") & filters.TEXT, bot_mentioned)
+        MessageHandler(filters.Mention(["@fimosin_bot"]) & filters.TEXT, bot_mentioned)
     )
     # Funções
     application.add_handler(
