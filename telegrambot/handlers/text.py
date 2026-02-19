@@ -11,6 +11,20 @@ from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link
 
 
+def bot_mention_filter(username: str = "@fimosin_bot"):
+    """Custom filter to check if the message mentions the bot by username."""
+    async def filter_func(update: Update, context: CallbackContext) -> bool:
+        if not update.message or not update.message.entities:
+            return False
+        for entity in update.message.entities:
+            if entity.type == "mention":
+                mention_text = update.message.text[entity.offset:entity.offset + entity.length]
+                if mention_text == username:
+                    return True
+        return False
+    return filter_func
+
+
 async def text_handler(update: Update, context: CallbackContext):
     MessageManager.add_message(
         telegram_message_id=update.message.message_id,

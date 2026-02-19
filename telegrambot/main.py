@@ -4,7 +4,7 @@
 import logging
 
 from config import TELEGRAM_TOKEN
-from handlers.text import bot_mentioned, text_handler
+from handlers.text import bot_mentioned, bot_mention_filter, text_handler
 from handlers.transcription import transcription_handler
 from telegram import Update
 from telegram.ext import (
@@ -50,9 +50,9 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(search_image_callback, pattern="^search_image:")
     )
-    # Bot mentioned
+    # Bot mentioned - filter for mentions of @fimosin_bot
     application.add_handler(
-        MessageHandler(filters.Mention(["@fimosin_bot"]) & filters.TEXT, bot_mentioned)
+        MessageHandler(bot_mention_filter() & filters.TEXT, bot_mentioned)
     )
     # Funções
     application.add_handler(
