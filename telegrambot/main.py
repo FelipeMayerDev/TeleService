@@ -52,7 +52,7 @@ def main() -> None:
     )
     # Bot mentioned - filter for mentions of @fimosin_bot
     application.add_handler(
-        MessageHandler(bot_mention_filter() & filters.TEXT, bot_mentioned)
+        MessageHandler(bot_mention_filter & filters.TEXT, bot_mentioned)
     )
     # Funções
     application.add_handler(

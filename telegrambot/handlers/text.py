@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from telegram import Update
-from telegram.ext import CallbackContext
+from telegram.ext import CallbackContext, filters
 
 from database.managers import MessageManager
 from providers.zai import ZAIProvider
@@ -11,18 +11,27 @@ from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link
 
 
-def bot_mention_filter(username: str = "@fimosin_bot"):
+class BotMentionFilter(filters.MessageFilter):
     """Custom filter to check if the message mentions the bot by username."""
-    async def filter_func(update: Update, context: CallbackContext) -> bool:
+
+    def __init__(self, username: str = "@fimosin_bot"):
+        super().__init__()
+        self.username = username
+
+    async def filter_message(self, update: Update) -> bool:
         if not update.message or not update.message.entities:
             return False
         for entity in update.message.entities:
             if entity.type == "mention":
-                mention_text = update.message.text[entity.offset:entity.offset + entity.length]
-                if mention_text == username:
+                mention_text = update.message.text[
+                    entity.offset : entity.offset + entity.length
+                ]
+                if mention_text == self.username:
                     return True
         return False
-    return filter_func
+
+
+bot_mention_filter = BotMentionFilter()
 
 
 async def text_handler(update: Update, context: CallbackContext):
