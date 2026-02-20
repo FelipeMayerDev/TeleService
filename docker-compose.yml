@@ -1,10 +1,27 @@
 services:
-  teleservice:
-    image: teleservice:latest
+  discordbot:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: discordbot/Dockerfile
+      target: discordbot
     env_file: .env
     volumes:
       - ./database.sqlite:/app/database.sqlite
-    restart: unless-stopped
+
+  telegrambot:
+    build:
+      context: .
+      dockerfile: telegrambot/Dockerfile
+      target: telegrambot
+    env_file: .env
+    volumes:
+      - ./database.sqlite:/app/database.sqlite
+
+  steam:
+    build:
+      context: .
+      dockerfile: steam/Dockerfile
+      target: steam
+    env_file: .env
+    volumes:
+      - ./database.sqlite:/app/database.sqlite
