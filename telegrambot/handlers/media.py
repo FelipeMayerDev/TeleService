@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from telegram import Update
 from telegram.ext import CallbackContext
+from telegram.helpers import escape_markdown
 
 from telegrambot.handlers.utils import get_media_from_link
 
@@ -20,9 +21,7 @@ async def get_media(update: Update, context: CallbackContext):
     media = get_media_from_link(link)
     caption = media[1]
     thumbnail_url = media[2]
-    final_caption = (
-        f"*{caption}*\n\nLink: {link}\n Enviado por {user.mention_markdown()}"
-    )
+    final_caption = f"*{escape_markdown(caption)}*\n\nLink: {link}\n Enviado por {user.mention_markdown()}"
 
     try:
         await update.message.reply_video(
