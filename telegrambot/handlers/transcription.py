@@ -20,6 +20,6 @@ async def transcription_handler(update: Update, context: CallbackContext):
     await _audio_file.download_to_drive(file_path)
 
     tanscripted = GroqProvider().transcribe_audio(file_path)
-    final_message = f"*{user}* disse: {tanscripted}"
+    final_message = f"*{user.first_name}* disse: {tanscripted}"
     os.remove(file_path)
     await status_message.edit_text(final_message, parse_mode="markdown")
