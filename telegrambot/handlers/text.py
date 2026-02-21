@@ -11,7 +11,6 @@ from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link, is_allowed_link
 
 
-
 async def text_handler(update: Update, context: CallbackContext):
     MessageManager.add_message(
         telegram_message_id=update.message.message_id,
@@ -25,26 +24,21 @@ async def text_handler(update: Update, context: CallbackContext):
         if update.message.reply_to_message
         else None,
     )
-    bot_mentioned(update, context)
     if is_allowed_link(update.message.text):
         await get_media(update, context)
 
-
-async def bot_mentioned(update: Update, context: CallbackContext):
-    if not "@fimosin_bot" in update.message.text:
-        return
-
-    await text_handler(update, context)
-    # Verificar se é um reply (mencionado) ou se é uma mensagem simples
-    # caso seja reply, enviar mensagem original e mensagem do reply como contexto
-    if update.message.reply_to_message:
-        reply_message = update.message.reply_to_message.text
-        reply_message_user = update.message.reply_to_message.from_user.full_name
-        context_message = update.message.text
-        context_message_user = update.message.from_user.full_name
-        full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
-        ia_response = ZAIProvider().chat(full_prompt)
-        await update.message.reply_text(ia_response)
-    else:
-        ia_response = ZAIProvider().chat(update.message.text)
-        await update.message.reply_text(ia_response)
+    # Check if bot is mentioned
+    if "@fimosin_bot" in update.message.text:
+        # Verificar se é um reply (mencionado) ou se é uma mensagem simples
+        # caso seja reply, enviar mensagem original e mensagem do reply como contexto
+        if update.message.reply_to_message:
+            reply_message = update.message.reply_to_message.text
+            reply_message_user = update.message.reply_to_message.from_user.full_name
+            context_message = update.message.text
+            context_message_user = update.message.from_user.full_name
+            full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
+            ia_response = ZAIProvider().chat(full_prompt)
+            await update.message.reply_text(ia_response)
+        else:
+            ia_response = ZAIProvider().chat(update.message.text)
+            await update.message.reply_text(ia_response)
