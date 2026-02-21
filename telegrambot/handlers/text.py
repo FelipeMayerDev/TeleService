@@ -59,7 +59,7 @@ async def text_handler(update: Update, context: CallbackContext):
             context_message_user = update.message.from_user.full_name
             full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
             ia_response = ZAIProvider().chat(full_prompt)
-            await update.message.reply_text(ia_response)
+            await update.message.reply_text(ia_response, parse_mode="markdown")
         else:
             ia_response = ZAIProvider().chat(update.message.text)
-            await update.message.reply_text(ia_response)
+            await update.message.reply_text(ia_response, parse_mode="markdown")
