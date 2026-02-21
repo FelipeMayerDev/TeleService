@@ -19,9 +19,10 @@ async def get_media(update: Update, context: CallbackContext):
     user = update.effective_user
     status_message = await update.message.reply_text("Pegando media do link...")
     media = get_media_from_link(link)
-    caption = media[1]
+    caption = media[1] or "Sem título"
     thumbnail_url = media[2]
-    final_caption = f"*{escape_markdown(caption)}*\n\nLink: {link}\n Enviado por {user.mention_markdown()}"
+    user_mention = user.mention_markdown() if user else "Unknown"
+    final_caption = f"*{escape_markdown(caption)}*\n\nLink: `{escape_markdown(link)}`\n Enviado por {user_mention}"
 
     try:
         await update.message.reply_video(
