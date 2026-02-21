@@ -61,7 +61,7 @@ def is_link(text: str) -> bool:
 def is_allowed_link(text: str):
     if not is_link(text):
         return False
-    allowed_links = ["shorts", "reel", "facebook", "bsky"]
+    allowed_links = ["youtube.com/shorts/", "instagram.com/reel/", "facebook.com/reel/", "bsky", "/status/"]
     if not any(link for link in allowed_links if link in text):
         return False
     return True
