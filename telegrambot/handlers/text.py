@@ -11,28 +11,6 @@ from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link, is_allowed_link
 
 
-class BotMentionFilter(filters.MessageFilter):
-    """Custom filter to check if the message mentions the bot by username."""
-
-    def __init__(self, username: str = "@fimosin_bot"):
-        super().__init__()
-        self.username = username
-
-    async def filter_message(self, update: Update) -> bool:
-        if not update.message or not update.message.entities:
-            return False
-        for entity in update.message.entities:
-            if entity.type == "mention":
-                mention_text = update.message.text[
-                    entity.offset : entity.offset + entity.length
-                ]
-                if mention_text == self.username:
-                    return True
-        return False
-
-
-bot_mention_filter = BotMentionFilter()
-
 
 async def text_handler(update: Update, context: CallbackContext):
     MessageManager.add_message(
@@ -52,6 +30,9 @@ async def text_handler(update: Update, context: CallbackContext):
 
 
 async def bot_mentioned(update: Update, context: CallbackContext):
+    if not "@fimosin_bot" in update.message.text:
+        return
+
     await text_handler(update, context)
     # Verificar se é um reply (mencionado) ou se é uma mensagem simples
     # caso seja reply, enviar mensagem original e mensagem do reply como contexto
