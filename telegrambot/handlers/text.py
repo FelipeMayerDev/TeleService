@@ -8,7 +8,7 @@ from telegram.ext import CallbackContext, filters
 from database.managers import MessageManager
 from providers.zai import ZAIProvider
 from telegrambot.handlers.media import get_media
-from telegrambot.handlers.utils import is_link
+from telegrambot.handlers.utils import is_link, is_allowed_link
 
 
 class BotMentionFilter(filters.MessageFilter):
@@ -47,7 +47,7 @@ async def text_handler(update: Update, context: CallbackContext):
         if update.message.reply_to_message
         else None,
     )
-    if is_link(update.message.text):
+    if is_allowed_link(update.message.text):
         await get_media(update, context)
 
 
