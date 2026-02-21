@@ -25,6 +25,7 @@ async def text_handler(update: Update, context: CallbackContext):
         if update.message.reply_to_message
         else None,
     )
+    bot_mentioned(update, context)
     if is_allowed_link(update.message.text):
         await get_media(update, context)
 
