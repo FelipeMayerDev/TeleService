@@ -17,8 +17,10 @@ from telegrambot.handlers.utils import get_media_from_link
 async def get_media(update: Update, context: CallbackContext):
     link = update.message.text
     user = update.effective_user
-    status_message = await update.message.reply_text("Pegando media do link...")
     media = get_media_from_link(link)
+    if not media:
+        return
+    status_message = await update.message.reply_text("Pegando media do link...")
     caption = media[1] or "Sem título"
     thumbnail_url = media[2]
     user_mention = user.mention_markdown() if user else "Unknown"

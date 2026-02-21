@@ -58,13 +58,28 @@ def is_link(text: str) -> bool:
     return bool(re.match(url_pattern, text))
 
 
+def is_allowed_link(text: str):
+    if not is_link(text):
+        return False
+    allowed_links = ["shorts", "reel", "facebook", "bsky"]
+    if not any(link for link in allowed_links if link in text):
+        return False
+    return True
+
+
 def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
     """Downloads audio and transcribes it with faster-whisper."""
     audio_path = os.path.join(tmpdir, "audio.%(ext)s")
     ydl_opts = {
         "format": "bestaudio/best",
         "outtmpl": audio_path,
-        "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "192"}],
+        "postprocessors": [
+            {
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }
+        ],
         "quiet": True,
         "no_warnings": True,
     }
@@ -72,7 +87,6 @@ def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         _info = ydl.extract_info(url)
         title = _info.get("title")
-
 
     mp3_path = os.path.join(tmpdir, "audio.mp3")
     if not os.path.exists(mp3_path):
@@ -93,7 +107,7 @@ def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
     finally:
         print(text)
         os.remove(mp3_path)
-        return(text, title, origin)
+        return (text, title, origin)
 
 
 def get_media_from_link(link) -> Optional[Tuple[any, any]]:
