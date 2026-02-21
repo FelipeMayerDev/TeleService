@@ -11,6 +11,27 @@ from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link, is_allowed_link
 
 
+def is_bot_mentioned(update: Update) -> bool:
+    """Check if the bot @fimosin_bot is mentioned in the message."""
+    if not update.message or not update.message.text:
+        return False
+
+    # Check text first for simple mentions
+    if "@fimosin_bot" in update.message.text:
+        return True
+
+    # Check entities for proper mentions
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "mention":
+                mention_text = update.message.text[
+                    entity.offset : entity.offset + entity.length
+                ]
+                if mention_text == "@fimosin_bot":
+                    return True
+    return False
+
+
 async def text_handler(update: Update, context: CallbackContext):
     MessageManager.add_message(
         telegram_message_id=update.message.message_id,
@@ -28,7 +49,7 @@ async def text_handler(update: Update, context: CallbackContext):
         await get_media(update, context)
 
     # Check if bot is mentioned
-    if "@fimosin_bot" in update.message.text:
+    if is_bot_mentioned(update):
         # Verificar se é um reply (mencionado) ou se é uma mensagem simples
         # caso seja reply, enviar mensagem original e mensagem do reply como contexto
         if update.message.reply_to_message:
