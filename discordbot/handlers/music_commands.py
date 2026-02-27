@@ -69,7 +69,7 @@ async def handle_play_command(message: discord.Message, args: str):
         else:
             await message.channel.send(f"✅ Added {added_count} songs to the queue!")
 
-        if not player.is_playing and not player.is_paused:
+        if not player.is_playing or player.is_paused:
             if player.voice_client and player.voice_client.is_connected():
                 if voice_channel != player.voice_client.channel:
                     await player.voice_client.move_to(voice_channel)

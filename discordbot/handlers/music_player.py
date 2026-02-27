@@ -226,7 +226,7 @@ class MusicPlayer:
         try:
             await asyncio.sleep(self.TIMEOUT_SECONDS)
 
-            if not self.queue and not self.is_playing:
+            if not self.queue or not self.is_playing or self.is_paused:
                 logger.info(
                     f"Timeout reached, disconnecting from guild {self.guild_id}"
                 )
