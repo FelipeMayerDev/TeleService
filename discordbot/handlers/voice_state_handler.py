@@ -24,6 +24,7 @@ class VoiceStateHandler:
     )
     _timer_task: Optional[asyncio.Task] = None
     _last_message_ids: List[int] = field(default_factory=list)
+    _online_users: Set[str] = field(default_factory=set)
 
     async def handle_voice_state(self, member, before, after) -> None:
         if member.bot:
@@ -38,9 +39,12 @@ class VoiceStateHandler:
 
         if not is_in_voice_before and is_in_voice_after:
             self._pending_changes["joined"].add(member.display_name)
+            self._online_users.add(member.display_name)
             logger.debug(f"{member.display_name} joined voice")
         elif is_in_voice_before and not is_in_voice_after:
             self._pending_changes["left"].add(member.display_name)
+            if member.display_name in self._online_users:
+                self._online_users.remove(member.display_name)
             logger.debug(f"{member.display_name} left voice")
         else:
             return
@@ -85,14 +89,24 @@ class VoiceStateHandler:
         if self._pending_changes["joined"]:
             names = ", ".join(sorted(self._pending_changes["joined"]))
             prefix = (
-                "Entrou" if len(self._pending_changes["joined"]) == 1 else "Entraram"
+                "entrou" if len(self._pending_changes["joined"]) == 1 else "entraram"
             )
-            lines.append(f"• {names} {prefix} no Discord")
+            lines.append(f"{names} {prefix} no Discord")
 
         if self._pending_changes["left"]:
             names = ", ".join(sorted(self._pending_changes["left"]))
-            prefix = "Saiu" if len(self._pending_changes["left"]) == 1 else "Saíram"
-            lines.append(f"• {names} {prefix} do Discord")
+            prefix = "saiu" if len(self._pending_changes["left"]) == 1 else "saíram"
+            lines.append(f"{names} {prefix} do Discord")
+
+        if lines:
+            lines.append("")
+
+        if self._online_users:
+            lines.append("Usuários online:")
+            for user in sorted(self._online_users):
+                lines.append(f"- {user}")
+        else:
+            lines.append("Não há usuários online")
 
         return "\n".join(lines)
 
@@ -108,7 +122,7 @@ class VoiceStateHandler:
                     & (Message.message_type == "voice_state")
                 )
                 .order_by(Message.created_at.desc())
-                .limit(3)
+                .limit(5)
             )
 
             for msg in messages:
@@ -152,7 +166,7 @@ class VoiceStateHandler:
             if result:
                 message_id, chat_id = result
                 self._last_message_ids.append(message_id)
-                if len(self._last_message_ids) > 3:
+                if len(self._last_message_ids) > 5:
                     self._last_message_ids.pop(0)
 
                 self._save_message_to_db(message_id, chat_id, text)
