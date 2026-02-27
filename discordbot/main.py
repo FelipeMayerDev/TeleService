@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
 from config import DISCORD_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from database.main import init_database
 from handlers import music_commands, VoiceStateHandler
 from telegram import Bot
 
@@ -101,6 +102,8 @@ async def on_message(message):
 
 
 def main():
+    init_database()
+
     if not DISCORD_TOKEN:
         logger.error("DISCORD_TOKEN not found in environment variables")
         return

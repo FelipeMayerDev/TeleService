@@ -129,6 +129,29 @@ class VoiceStateHandler:
             logger.error(f"Error getting last voice state message: {e}")
             return None
 
+        try:
+            msg = (
+                Message.select()
+                .where(
+                    (Message.chat_id == self.telegram_chat_id)
+                    & (Message.message_type == "voice_state")
+                )
+                .order_by(Message.created_at.desc())
+                .first()
+            )
+
+            if msg:
+                logger.info(
+                    f"Found last voice_state message: ID={msg.id}, telegram_message_id={msg.telegram_message_id}"
+                )
+                return msg.telegram_message_id
+            else:
+                logger.info("No voice_state message found in database")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting last voice state message: {e}")
+            return None
+
     async def _edit_last_message(self, message_id: int, text: str) -> bool:
         if self.bot is None or self.telegram_chat_id is None:
             return False
@@ -187,7 +210,6 @@ class VoiceStateHandler:
                 reply_text=None,
                 message_type="voice_state",
             )
-            logger.debug(f"Saved message {message_id} to database")
         except Exception as e:
             logger.error(f"Error saving message to database: {e}")
 
