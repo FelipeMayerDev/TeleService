@@ -4,4 +4,4 @@ from .models import Feature, Message
 
 def init_database():
     with db as conn:
-        conn.create_tables([Feature, Message])
+        conn.create_tables([Feature, Message], safe=True)
