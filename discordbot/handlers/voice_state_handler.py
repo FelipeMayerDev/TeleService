@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from typing import List, Optional, Set
+from typing import Optional, Set
 
 from peewee import DoesNotExist
 from telegram import Bot
@@ -23,7 +23,6 @@ class VoiceStateHandler:
         default_factory=lambda: {"joined": set(), "left": set()}
     )
     _timer_task: Optional[asyncio.Task] = None
-    _last_message_ids: List[int] = field(default_factory=list)
     _online_users: Set[str] = field(default_factory=set)
 
     async def handle_voice_state(self, member, before, after) -> None:
@@ -115,21 +114,17 @@ class VoiceStateHandler:
             return None
 
         try:
-            messages = (
+            msg = (
                 Message.select()
                 .where(
                     (Message.chat_id == self.telegram_chat_id)
                     & (Message.message_type == "voice_state")
                 )
                 .order_by(Message.created_at.desc())
-                .limit(5)
+                .first()
             )
 
-            for msg in messages:
-                if msg.telegram_message_id in self._last_message_ids:
-                    return msg.telegram_message_id
-
-            return None
+            return msg.telegram_message_id if msg else None
         except Exception as e:
             logger.error(f"Error getting last voice state message: {e}")
             return None
@@ -165,10 +160,6 @@ class VoiceStateHandler:
 
             if result:
                 message_id, chat_id = result
-                self._last_message_ids.append(message_id)
-                if len(self._last_message_ids) > 5:
-                    self._last_message_ids.pop(0)
-
                 self._save_message_to_db(message_id, chat_id, text)
         except Exception as e:
             logger.error(f"Error sending new message: {e}")

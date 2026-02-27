@@ -76,31 +76,3 @@ async def edit_telegram_message(
     except Exception as e:
         logger.error(f"Error editing Telegram message: {e}")
         return False
-
-    bot = Bot(token=token)
-
-    try:
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=text,
-        )
-        logger.info(f"Edited Telegram message {message_id}: {text[:50]}...")
-        return True
-    except Exception as e:
-        logger.error(f"Error editing Telegram message: {e}")
-        return False
-
-    bot = Bot(token=token)
-
-    try:
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=text,
-        )
-        logger.info(f"Edited Telegram message {message_id}: {text[:50]}...")
-        return True
-    except Exception as e:
-        logger.error(f"Error editing Telegram message: {e}")
-        return False
