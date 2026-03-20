@@ -6,6 +6,21 @@ from providers.zai import ZAIProvider
 from telegrambot.handlers.utils import is_valid_link, transcribe_audio
 
 
+async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text(
+        """📚 *FAQ*
+
+🐌 *Pooling da Steam pela API é lento*
+• Pode ler na documentação oficial
+• Não possui webhook (não é de graça)
+
+❓ *Bot não pegou o link da sua mídia?*
+• Geralmente é restrição de idade
+• Solução: Envie seu cookie pro Focky""",
+        parse_mode="markdown",
+    )
+
+
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     link = update.message.text.split(" ", 1)[1]

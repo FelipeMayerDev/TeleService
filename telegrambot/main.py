@@ -17,7 +17,12 @@ from telegram.ext import (
 )
 
 from database.main import init_database
-from telegrambot.handlers.commands import resume, search_image, search_image_callback
+from telegrambot.handlers.commands import (
+    faq,
+    resume,
+    search_image,
+    search_image_callback,
+)
 
 # Enable logging
 logging.basicConfig(
@@ -44,6 +49,7 @@ def main() -> None:
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # Commands
+    application.add_handler(CommandHandler("faq", faq))
     application.add_handler(CommandHandler("resume", resume))
     application.add_handler(CommandHandler("image", search_image))
     # Image search callback
