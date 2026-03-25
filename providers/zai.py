@@ -30,7 +30,7 @@ class ZAIProvider(AiFactory):
         for attempt, delay in enumerate(retry_delays, 1):
             try:
                 response = self.client.chat.completions.create(
-                    model="glm-4.7-flash",
+                    model="glm-4.7",
                     messages=[{"role": "user", "content": message}],
                     stream=False,
                 )
