@@ -2,6 +2,10 @@ import asyncio
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import requests
 from config import (
     ACTIVE_CHECK_INTERVAL,
@@ -11,13 +15,11 @@ from config import (
     STEAM_API_BASE,
     STEAM_API_KEY,
 )
-from dotenv import load_dotenv
 
 sys.path.append(str(Path(__file__).parent.parent))
 from providers import SerpProvider
 from shared import send_telegram_message
-
-load_dotenv()
+from database.main import init_database
 
 active_check_interval = int(ACTIVE_CHECK_INTERVAL)
 offline_check_interval = int(OFFLINE_CHECK_INTERVAL)
@@ -138,6 +140,8 @@ async def get_playing_profiles(profiles: list[str]) -> dict:
 
 async def main():
     """Main loop."""
+    init_database()
+
     if not profiles_to_watch:
         print("No profiles configured")
         return
