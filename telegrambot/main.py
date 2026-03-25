@@ -17,7 +17,7 @@ from telegram.ext import (
     filters,
 )
 
-from database.main import init_database
+from domain import init_database
 from telegrambot.handlers.commands import (
     faq,
     resume,
@@ -81,6 +81,7 @@ def main() -> None:
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler),
     )
+
     init_database()
     application.run_polling()
 

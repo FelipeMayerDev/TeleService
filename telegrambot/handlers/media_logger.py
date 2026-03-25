@@ -6,7 +6,9 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from telegram import Update
 from telegram.ext import CallbackContext
 
-from database.managers import MessageManager
+from domain import MessageService
+
+message_service = MessageService()
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ async def media_logger(update: Update, context: CallbackContext):
             message_type = "poll"
             text = f"[Poll: {message.poll.question}]"
 
-        MessageManager.add_message(
+        message_service.add_telegram_message(
             telegram_message_id=message.message_id,
             text=text,
             chat_id=message.chat_id,

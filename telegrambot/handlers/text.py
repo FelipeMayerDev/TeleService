@@ -7,10 +7,13 @@ from telegram import Update
 from telegram.ext import CallbackContext, filters
 from telegram.error import BadRequest
 
-from database.managers import MessageManager
+from domain import MessageService
 from providers.zai import ZAIProvider
+from shared import reply_text_safe
 from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link, is_allowed_link
+
+message_service = MessageService()
 
 logger = logging.getLogger(__name__)
 
@@ -64,17 +67,27 @@ async def text_handler(update: Update, context: CallbackContext):
             full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
             ia_response = ZAIProvider().chat(full_prompt)
             try:
-                await message.reply_text(ia_response, parse_mode="markdown")
+                await reply_text_safe(
+                    message,
+                    ia_response,
+                    parse_mode="markdown",
+                    message_type="ai_response",
+                )
             except BadRequest as e:
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
-                await message.reply_text(ia_response)
+                await reply_text_safe(message, ia_response, message_type="ai_response")
         else:
             ia_response = ZAIProvider().chat(message.text)
             try:
-                await message.reply_text(ia_response, parse_mode="markdown")
+                await reply_text_safe(
+                    message,
+                    ia_response,
+                    parse_mode="markdown",
+                    message_type="ai_response",
+                )
             except BadRequest as e:
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
-                await message.reply_text(ia_response)
+                await reply_text_safe(message, ia_response, message_type="ai_response")
 
     # Save to database (only if text exists)
     if not message.text:
@@ -97,7 +110,7 @@ async def text_handler(update: Update, context: CallbackContext):
                     or message.reply_to_message.from_user.first_name
                 )
 
-        MessageManager.add_message(
+        message_service.add_telegram_message(
             telegram_message_id=message.message_id,
             text=message.text,
             chat_id=message.chat_id,

@@ -19,7 +19,7 @@ from config import (
 sys.path.append(str(Path(__file__).parent.parent))
 from providers import SerpProvider
 from shared import send_telegram_message
-from database.main import init_database
+from domain import init_database
 
 active_check_interval = int(ACTIVE_CHECK_INTERVAL)
 offline_check_interval = int(OFFLINE_CHECK_INTERVAL)

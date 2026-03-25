@@ -5,15 +5,12 @@ from typing import Optional, Set
 
 from telegram import Bot
 
+from domain import MessageService
 from shared import edit_telegram_message, send_telegram_message
 
+message_service = MessageService()
+
 logger = logging.getLogger(__name__)
-
-
-def get_message_model():
-    from database.models import Message
-
-    return Message
 
 
 @dataclass
@@ -118,18 +115,13 @@ class VoiceStateHandler:
             return None
 
         try:
-            Message = get_message_model()
-            msg = (
-                Message.select()
-                .where(
-                    (Message.chat_id == self.telegram_chat_id)
-                    & (Message.message_type == "voice_state")
-                )
-                .order_by(Message.created_at.desc())
-                .first()
+            msg = message_service.get_last_message_by_type(
+                chat_id=self.telegram_chat_id,
+                message_type="voice_state",
+                platform="telegram",
             )
 
-            return msg.telegram_message_id if msg else None
+            return msg.platform_message_id if msg else None
         except Exception as e:
             logger.error(f"Error getting last voice state message: {e}")
             return None
@@ -139,19 +131,15 @@ class VoiceStateHandler:
             return False
 
         try:
-            Message = get_message_model()
-            last_5_messages = (
-                Message.select()
-                .where(
-                    (Message.chat_id == self.telegram_chat_id)
-                    & (Message.from_user.in_(["System", "Discord"]))
-                )
-                .order_by(Message.created_at.desc())
-                .limit(5)
+            last_5_messages = message_service.get_last_messages(
+                chat_id=self.telegram_chat_id,
+                platform="telegram",
+                limit=5,
+                from_users=["System", "Discord"],
             )
 
             for msg in last_5_messages:
-                if msg.telegram_message_id == message_id:
+                if msg.platform_message_id == message_id:
                     return True
 
             logger.info(f"Message {message_id} not in last 5 bot messages of the chat")
@@ -198,19 +186,21 @@ class VoiceStateHandler:
 
     def _update_message_in_db(self, message_id: int, text: str) -> None:
         try:
-            Message = get_message_model()
-            msg = Message.get(Message.telegram_message_id == message_id)
-            msg.text = text
-            msg.save()
-            logger.debug(f"Updated message {message_id} in database")
-        except Exception:
-            logger.warning(f"Message {message_id} not found in database")
+            updated = message_service.update_message_text(
+                platform_message_id=message_id,
+                text=text,
+                platform="telegram",
+            )
+            if updated:
+                logger.debug(f"Updated message {message_id} in database")
+            else:
+                logger.warning(f"Message {message_id} not found in database")
+        except Exception as e:
+            logger.warning(f"Error updating message {message_id}: {e}")
 
     def _save_message_to_db(self, message_id: int, chat_id: int, text: str) -> None:
         try:
-            from database.managers import MessageManager
-
-            MessageManager.add_message(
+            message_service.add_telegram_message(
                 telegram_message_id=message_id,
                 text=text,
                 chat_id=chat_id,

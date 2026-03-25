@@ -7,8 +7,10 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from telegram import Update
 from telegram.ext import CallbackContext
 
+from domain import MessageService
 from providers.groq import GroqProvider
-from database.managers import MessageManager
+
+message_service = MessageService()
 
 
 async def transcription_handler(update: Update, context: CallbackContext):
@@ -40,7 +42,7 @@ async def transcription_handler(update: Update, context: CallbackContext):
             )
 
     try:
-        MessageManager.add_message(
+        message_service.add_telegram_message(
             telegram_message_id=message.message_id,
             text=f"[Voice message - {tanscripted}]",
             chat_id=message.chat_id,

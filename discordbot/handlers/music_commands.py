@@ -7,6 +7,7 @@ from discord.ext import commands
 from .music_player import MusicPlayer
 from .music_ui import create_queue_embed, create_player_embed, MusicView, QueueView
 from .music_utils import get_song_info, search_song
+from shared import discord_channel_send_text_safe, discord_reply_text_safe
 
 logger = logging.getLogger(__name__)
 
@@ -24,50 +25,81 @@ async def handle_play_command(message: discord.Message, args: str):
     guild_id = message.guild.id
 
     if not message.author.voice or not message.author.voice.channel:
-        await message.reply("You need to be in a voice channel to play music!")
+        await discord_reply_text_safe(
+            message,
+            "You need to be in a voice channel to play music!",
+            message_type="error",
+        )
         return
 
     voice_channel = message.author.voice.channel
     player = get_player(guild_id)
 
     if not args:
-        await message.reply("Please provide a URL or search query!")
+        await discord_reply_text_safe(
+            message,
+            "Please provide a URL or search query!",
+            message_type="error",
+        )
         return
 
     is_url = args.startswith("http://") or args.startswith("https://")
 
-    await message.channel.send("🔍 Searching for music...")
+    await discord_channel_send_text_safe(
+        message.channel,
+        "🔍 Searching for music...",
+        message_type="status",
+        save_to_db=False,
+    )
 
     try:
         if is_url:
             song_info = get_song_info(args)
             if not song_info:
-                await message.reply("Could not fetch song information!")
+                await discord_reply_text_safe(
+                    message,
+                    "Could not fetch song information!",
+                    message_type="error",
+                )
                 return
             songs = [song_info]
         else:
             results = search_song(args)
             if not results:
-                await message.reply("No results found!")
+                await discord_reply_text_safe(
+                    message,
+                    "No results found!",
+                    message_type="error",
+                )
                 return
             songs = results
 
         if not songs:
-            await message.reply("No songs found!")
+            await discord_reply_text_safe(
+                message,
+                "No songs found!",
+                message_type="error",
+            )
             return
 
         added_count = player.add_multiple_to_queue(songs)
 
         if added_count == 1:
             song = songs[0]
-            await message.channel.send(
+            await discord_channel_send_text_safe(
+                message.channel,
                 f"✅ Added to queue:\n"
                 f"**{song['title']}**\n"
                 f"👤 {song['artist']}\n"
-                f"⏱️ {song.get('duration', 0)} seconds"
+                f"⏱️ {song.get('duration', 0)} seconds",
+                message_type="music_added",
             )
         else:
-            await message.channel.send(f"✅ Added {added_count} songs to the queue!")
+            await discord_channel_send_text_safe(
+                message.channel,
+                f"✅ Added {added_count} songs to queue!",
+                message_type="music_added",
+            )
 
         if not player.is_playing or player.is_paused:
             if player.voice_client and player.voice_client.is_connected():
@@ -86,7 +118,11 @@ async def handle_play_command(message: discord.Message, args: str):
 
     except Exception as e:
         logger.error(f"Error in play command: {e}")
-        await message.reply(f"Error playing music: {str(e)}")
+        await discord_reply_text_safe(
+            message,
+            f"Error playing music: {str(e)}",
+            message_type="error",
+        )
 
 
 async def handle_queue_command(message: discord.Message, args: str):
@@ -100,9 +136,15 @@ async def handle_queue_command(message: discord.Message, args: str):
         except ValueError:
             pass
 
-    embed = create_queue_embed(player, page=page)
-    view = QueueView(player, current_page=page)
+    if not player.queue:
+        await discord_reply_text_safe(
+            message,
+            "Queue is empty! Add songs first.",
+            message_type="info",
+        )
+        return
 
+    embed, view = create_queue_embed(player, page)
     await message.channel.send(embed=embed, view=view)
 
 
@@ -111,15 +153,27 @@ async def handle_shuffle_command(message: discord.Message):
     player = get_player(guild_id)
 
     if not player.queue:
-        await message.reply("Queue is empty! Add songs first.")
+        await discord_reply_text_safe(
+            message,
+            "Queue is empty! Add songs first.",
+            message_type="info",
+        )
         return
 
     is_shuffled = player.shuffle_queue_mode()
 
     if is_shuffled:
-        await message.reply("🔀 Queue shuffled!")
+        await discord_reply_text_safe(
+            message,
+            "🔀 Queue shuffled!",
+            message_type="music_shuffle",
+        )
     else:
-        await message.reply("📋 Queue restored to original order")
+        await discord_reply_text_safe(
+            message,
+            "📋 Queue restored to original order",
+            message_type="music_shuffle",
+        )
 
     if player.player_message:
         await player.update_player_message()
@@ -130,16 +184,28 @@ async def handle_skip_command(message: discord.Message):
     player = get_player(guild_id)
 
     if not player.is_playing:
-        await message.reply("Nothing is playing right now!")
+        await discord_reply_text_safe(
+            message,
+            "Nothing is playing right now!",
+            message_type="info",
+        )
         return
 
     if await player.skip():
-        await message.reply("⏭️ Skipped to next song!")
+        await discord_reply_text_safe(
+            message,
+            "⏭️ Skipped to next song!",
+            message_type="music_skip",
+        )
 
         if player.player_message:
             await player.update_player_message()
     else:
-        await message.reply("Could not skip or no next song")
+        await discord_reply_text_safe(
+            message,
+            "Could not skip or no next song",
+            message_type="error",
+        )
 
 
 async def handle_pause_command(message: discord.Message):
@@ -147,12 +213,20 @@ async def handle_pause_command(message: discord.Message):
     player = get_player(guild_id)
 
     if await player.pause():
-        await message.reply("⏸️ Paused playback")
+        await discord_reply_text_safe(
+            message,
+            "⏸️ Paused playback",
+            message_type="music_pause",
+        )
 
         if player.player_message:
             await player.update_player_message()
     else:
-        await message.reply("Could not pause (nothing playing or already paused)")
+        await discord_reply_text_safe(
+            message,
+            "Could not pause (nothing playing or already paused)",
+            message_type="error",
+        )
 
 
 async def handle_resume_command(message: discord.Message):
@@ -160,12 +234,20 @@ async def handle_resume_command(message: discord.Message):
     player = get_player(guild_id)
 
     if await player.resume():
-        await message.reply("▶️ Resumed playback")
+        await discord_reply_text_safe(
+            message,
+            "▶️ Resumed playback",
+            message_type="music_resume",
+        )
 
         if player.player_message:
             await player.update_player_message()
     else:
-        await message.reply("Could not resume (not paused)")
+        await discord_reply_text_safe(
+            message,
+            "Could not resume (not paused)",
+            message_type="error",
+        )
 
 
 async def handle_stop_command(message: discord.Message):
@@ -173,12 +255,20 @@ async def handle_stop_command(message: discord.Message):
     player = get_player(guild_id)
 
     if await player.stop():
-        await message.reply("⏹️ Stopped playback and cleared queue")
+        await discord_reply_text_safe(
+            message,
+            "⏹️ Stopped playback and cleared queue",
+            message_type="music_stop",
+        )
 
         if player.player_message:
             await player.update_player_message()
     else:
-        await message.reply("Nothing to stop")
+        await discord_reply_text_safe(
+            message,
+            "Nothing to stop",
+            message_type="info",
+        )
 
 
 async def handle_nowplaying_command(message: discord.Message):
@@ -186,7 +276,11 @@ async def handle_nowplaying_command(message: discord.Message):
     player = get_player(guild_id)
 
     if not player.current:
-        await message.reply("Nothing is playing right now!")
+        await discord_reply_text_safe(
+            message,
+            "Nothing is playing right now!",
+            message_type="info",
+        )
         return
 
     song = player.current
@@ -206,7 +300,9 @@ async def handle_nowplaying_command(message: discord.Message):
 
     embed.set_footer(text=f"Position: 1 of {len(player.queue) + 1} in queue")
 
-    await message.channel.send(embed=embed)
+    from shared import discord_send_embed_safe
+
+    await discord_send_embed_safe(message.channel, embed, message_type="nowplaying")
 
 
 async def handle_lyrics_command(message: discord.Message):
@@ -214,29 +310,51 @@ async def handle_lyrics_command(message: discord.Message):
     player = get_player(guild_id)
 
     if not player.current:
-        await message.reply("Nothing is playing right now!")
+        await discord_reply_text_safe(
+            message,
+            "Nothing is playing right now!",
+            message_type="info",
+        )
         return
 
-    await message.channel.send("🔍 Searching for lyrics...")
+    await discord_channel_send_text_safe(
+        message.channel,
+        "🔍 Searching for lyrics...",
+        message_type="status",
+        save_to_db=False,
+    )
 
     lyrics = await player.get_current_lyrics()
 
     if lyrics:
         from .music_ui import create_lyrics_embed
+        from shared import discord_send_embed_safe
 
         embed = create_lyrics_embed(lyrics, player.current)
 
         try:
-            await message.channel.send(embed=embed)
+            await discord_send_embed_safe(message.channel, embed, message_type="lyrics")
         except discord.errors.HTTPException:
-            await message.channel.send(f"Lyrics are too long! Check DM instead.")
+            await discord_channel_send_text_safe(
+                message.channel,
+                "Lyrics are too long! Check DM instead.",
+                message_type="error",
+            )
 
             try:
                 await message.author.send(embed=embed)
             except Exception:
-                await message.channel.send("Could not send lyrics via DM either.")
+                await discord_channel_send_text_safe(
+                    message.channel,
+                    "Could not send lyrics via DM either.",
+                    message_type="error",
+                )
     else:
-        await message.reply("Lyrics not found for this song.")
+        await discord_reply_text_safe(
+            message,
+            "Lyrics not found for this song.",
+            message_type="error",
+        )
 
 
 async def handle_disconnect_command(message: discord.Message):
@@ -244,9 +362,17 @@ async def handle_disconnect_command(message: discord.Message):
     player = get_player(guild_id)
 
     if await player.disconnect():
-        await message.reply("👋 Disconnected from voice channel")
+        await discord_reply_text_safe(
+            message,
+            "👋 Disconnected from voice channel",
+            message_type="music_disconnect",
+        )
     else:
-        await message.reply("Not connected to any voice channel")
+        await discord_reply_text_safe(
+            message,
+            "Not connected to any voice channel",
+            message_type="info",
+        )
 
 
 async def handle_clear_command(message: discord.Message):
@@ -276,20 +402,36 @@ async def handle_remove_command(message: discord.Message, args: str):
         index = int(args) - 1
 
         if index < 0:
-            await message.reply("Invalid position!")
+            await discord_reply_text_safe(
+                message,
+                "Invalid position!",
+                message_type="error",
+            )
             return
 
         song = player.remove_from_queue(index)
 
         if song:
-            await message.reply(f"🗑️ Removed from queue: **{song['title']}**")
+            await discord_reply_text_safe(
+                message,
+                f"🗑️ Removed from queue: **{song['title']}**",
+                message_type="music_remove",
+            )
 
             if player.player_message:
                 await player.update_player_message()
         else:
-            await message.reply("Invalid position or queue is empty!")
+            await discord_reply_text_safe(
+                message,
+                "Invalid position or queue is empty!",
+                message_type="error",
+            )
     except ValueError:
-        await message.reply("Invalid position! Please use a number (e.g., !remove 1)")
+        await discord_reply_text_safe(
+            message,
+            "Invalid position! Please use a number (e.g., !remove 1)",
+            message_type="error",
+        )
 
 
 async def handle_move_command(message: discord.Message, args: str):
@@ -297,13 +439,21 @@ async def handle_move_command(message: discord.Message, args: str):
     player = get_player(guild_id)
 
     if not args:
-        await message.reply("Usage: !move <from> <to> (e.g., !move 1 5)")
+        await discord_reply_text_safe(
+            message,
+            "Usage: !move <from> <to> (e.g., !move 1 5)",
+            message_type="error",
+        )
         return
 
     try:
         parts = args.split()
         if len(parts) < 2:
-            await message.reply("Usage: !move <from> <to> (e.g., !move 1 5)")
+            await discord_reply_text_safe(
+                message,
+                "Usage: !move <from> <to> (e.g., !move 1 5)",
+                message_type="error",
+            )
             return
 
         from_pos = int(parts[0]) - 1
@@ -315,21 +465,31 @@ async def handle_move_command(message: discord.Message, args: str):
             or from_pos >= len(player.queue)
             or to_pos >= len(player.queue)
         ):
-            await message.reply("Invalid positions!")
+            await discord_reply_text_safe(
+                message,
+                "Invalid positions!",
+                message_type="error",
+            )
             return
 
         song = player.queue.pop(from_pos)
         player.queue.insert(to_pos, song)
 
-        await message.reply(
-            f"🔄 Moved **{song['title']}** from position {from_pos + 1} to {to_pos + 1}"
+        await discord_reply_text_safe(
+            message,
+            f"🔄 Moved **{song['title']}** from position {from_pos + 1} to {to_pos + 1}",
+            message_type="music_move",
         )
 
         if player.player_message:
             await player.update_player_message()
 
     except ValueError:
-        await message.reply("Invalid positions! Please use numbers (e.g., !move 1 5)")
+        await discord_reply_text_safe(
+            message,
+            "Invalid positions! Please use numbers (e.g., !move 1 5)",
+            message_type="error",
+        )
 
 
 async def cleanup_player(guild_id: int):

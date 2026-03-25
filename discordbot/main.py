@@ -9,8 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
 from config import DISCORD_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
-from database.main import init_database
+from domain import init_database
 from handlers import music_commands, VoiceStateHandler
+from shared import discord_channel_send_text_safe
 from telegram import Bot
 
 logging.basicConfig(
@@ -61,7 +62,9 @@ async def on_message(message):
         return
 
     if message.content.startswith("!hello"):
-        await message.channel.send("Hello!")
+        await discord_channel_send_text_safe(
+            message.channel, "Hello!", message_type="hello"
+        )
 
     content = message.content
     prefix = "!"

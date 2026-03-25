@@ -5,12 +5,13 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-sys.path.append(str(Path(__file__).parent.parent.parent))
+sys.path.append(str(Path(__file__).parent.parent))
 
 from telegram import Update
 from telegram.ext import CallbackContext
 from telegram.helpers import escape_markdown
 
+from shared import reply_text_safe, reply_video_safe
 from telegrambot.handlers.utils import get_media_from_link
 
 
@@ -20,18 +21,25 @@ async def get_media(update: Update, context: CallbackContext):
     media = get_media_from_link(link)
     if not media:
         return
-    status_message = await update.message.reply_text("Pegando media do link...")
+    status_message = await reply_text_safe(
+        update.message,
+        "Pegando media do link...",
+        message_type="status",
+        save_to_db=False,
+    )
     caption = media[1] or "Sem título"
     thumbnail_url = media[2]
     user_mention = user.mention_markdown() if user else "Unknown"
     final_caption = f"*{escape_markdown(caption)}*\n\nLink: `{escape_markdown(link)}`\n Enviado por {user_mention}"
 
     try:
-        await update.message.reply_video(
+        await reply_video_safe(
+            update.message,
             video=media[0],
             caption=final_caption,
             thumbnail=thumbnail_url,
             parse_mode="markdown",
+            message_type="media",
         )
         await status_message.delete()
     except Exception:
@@ -90,16 +98,22 @@ async def get_media(update: Update, context: CallbackContext):
 
         await status_message.edit_text("📤 Enviando vídeo...")
         if thumb_buffer and thumb_buffer.getbuffer().nbytes > 0:
-            await update.message.reply_video(
+            await reply_video_safe(
+                update.message,
                 video=video_buffer,
                 caption=final_caption,
                 thumbnail=thumb_buffer,
                 parse_mode="markdown",
+                message_type="media",
             )
             thumb_buffer.close()
         else:
-            await update.message.reply_video(
-                video=video_buffer, caption=final_caption, parse_mode="markdown"
+            await reply_video_safe(
+                update.message,
+                video=video_buffer,
+                caption=final_caption,
+                parse_mode="markdown",
+                message_type="media",
             )
         video_buffer.close()
         await status_message.delete()

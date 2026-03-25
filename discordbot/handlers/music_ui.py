@@ -4,6 +4,7 @@ import discord
 from discord import ui
 
 from .music_utils import format_duration
+from shared import discord_followup_send_safe
 
 logger = logging.getLogger(__name__)
 
@@ -183,43 +184,79 @@ class MusicView(ui.View):
         await interaction.response.defer()
 
         if await self.player.pause():
-            await interaction.followup.send("⏸️ Paused playback", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "⏸️ Paused playback",
+                message_type="music_pause",
+                ephemeral=True,
+            )
             await self._update_view()
         else:
-            await interaction.followup.send("Could not pause playback", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "Could not pause playback",
+                message_type="error",
+                ephemeral=True,
+            )
 
     @ui.button(label="▶️ Resume", style=discord.ButtonStyle.primary, custom_id="resume")
     async def resume_button(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
 
         if await self.player.resume():
-            await interaction.followup.send("▶️ Resumed playback", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "▶️ Resumed playback",
+                message_type="music_resume",
+                ephemeral=True,
+            )
             await self._update_view()
         else:
-            await interaction.followup.send("Could not resume playback", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "Could not resume playback",
+                message_type="error",
+                ephemeral=True,
+            )
 
     @ui.button(label="⏹️ Stop", style=discord.ButtonStyle.danger, custom_id="stop")
     async def stop_button(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
 
         if await self.player.stop():
-            await interaction.followup.send(
-                "⏹️ Stopped playback and cleared queue", ephemeral=True
+            await discord_followup_send_safe(
+                interaction,
+                "⏹️ Stopped playback and cleared queue",
+                message_type="music_stop",
+                ephemeral=True,
             )
             await self._update_view()
         else:
-            await interaction.followup.send("Could not stop playback", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "Could not stop playback",
+                message_type="error",
+                ephemeral=True,
+            )
 
     @ui.button(label="⏭️ Skip", style=discord.ButtonStyle.primary, custom_id="skip")
     async def skip_button(self, interaction: discord.Interaction, button: ui.Button):
         await interaction.response.defer()
 
         if await self.player.skip():
-            await interaction.followup.send("⏭️ Skipped to next song", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "⏭️ Skipped to next song",
+                message_type="music_skip",
+                ephemeral=True,
+            )
             await self._update_view()
         else:
-            await interaction.followup.send(
-                "Could not skip or no next song", ephemeral=True
+            await discord_followup_send_safe(
+                interaction,
+                "Could not skip or no next song",
+                message_type="error",
+                ephemeral=True,
             )
 
     @ui.button(
@@ -230,9 +267,19 @@ class MusicView(ui.View):
 
         is_shuffled = self.player.shuffle_queue_mode()
         if is_shuffled:
-            await interaction.followup.send("🔀 Queue shuffled!", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "🔀 Queue shuffled!",
+                message_type="music_shuffle",
+                ephemeral=True,
+            )
         else:
-            await interaction.followup.send("📋 Queue unshuffled", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "📋 Queue unshuffled",
+                message_type="music_shuffle",
+                ephemeral=True,
+            )
 
         await self._update_view()
 
@@ -251,12 +298,18 @@ class MusicView(ui.View):
                 await interaction.followup.send(embed=embed, ephemeral=True)
             except Exception as e:
                 logger.error(f"Error sending lyrics: {e}")
-                await interaction.followup.send(
-                    "Error displaying lyrics", ephemeral=True
+                await discord_followup_send_safe(
+                    interaction,
+                    "Error displaying lyrics",
+                    message_type="error",
+                    ephemeral=True,
                 )
         else:
-            await interaction.followup.send(
-                "Lyrics not found for this song", ephemeral=True
+            await discord_followup_send_safe(
+                interaction,
+                "Lyrics not found for this song",
+                message_type="error",
+                ephemeral=True,
             )
 
     @ui.button(label="📋 Queue", style=discord.ButtonStyle.secondary, custom_id="queue")
@@ -269,7 +322,12 @@ class MusicView(ui.View):
             await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception as e:
             logger.error(f"Error sending queue: {e}")
-            await interaction.followup.send("Error displaying queue", ephemeral=True)
+            await discord_followup_send_safe(
+                interaction,
+                "Error displaying queue",
+                message_type="error",
+                ephemeral=True,
+            )
 
     async def _update_view(self):
         self._update_button_states()
