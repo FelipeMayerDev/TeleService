@@ -38,6 +38,7 @@ class MessageManager:
         to_user=None,
         reply_to_message_id=None,
         reply_text=None,
+        message_type=None,
     ):
         Message.create(
             telegram_message_id=telegram_message_id,
@@ -47,5 +48,6 @@ class MessageManager:
             to_user=to_user,
             reply_to_message_id=reply_to_message_id,
             reply_text=reply_text,
+            message_type=message_type,
         )
         return True

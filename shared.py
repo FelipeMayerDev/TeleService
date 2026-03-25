@@ -14,6 +14,8 @@ async def send_telegram_message(
     chat_id: Optional[str] = None,
     text: Optional[str] = None,
     photo: Optional[str] = None,
+    save_to_db: bool = False,
+    message_type: Optional[str] = None,
 ) -> Optional[Tuple[int, int]]:
     if token is None:
         token = os.getenv("TELEGRAM_TOKEN")
@@ -33,6 +35,19 @@ async def send_telegram_message(
             message = await bot.send_photo(chat_id=chat_id, photo=photo, caption=text)
             log_text = text[:50] if text else "No caption"
             logger.info(f"Sent photo to Telegram: {log_text}...")
+            if save_to_db and chat_id:
+                from database.managers import MessageManager
+
+                MessageManager.add_message(
+                    telegram_message_id=message.message_id,
+                    text=text or "[Photo]",
+                    chat_id=int(chat_id),
+                    from_user="System",
+                    to_user=None,
+                    reply_to_message_id=None,
+                    reply_text=None,
+                    message_type=message_type or "photo",
+                )
             return (message.message_id, int(chat_id))
         else:
             if not text:
@@ -40,6 +55,19 @@ async def send_telegram_message(
                 return None
             message = await bot.send_message(chat_id=chat_id, text=text)
             logger.info(f"Sent to Telegram: {text[:50]}...")
+            if save_to_db and chat_id:
+                from database.managers import MessageManager
+
+                MessageManager.add_message(
+                    telegram_message_id=message.message_id,
+                    text=text,
+                    chat_id=int(chat_id),
+                    from_user="System",
+                    to_user=None,
+                    reply_to_message_id=None,
+                    reply_text=None,
+                    message_type=message_type or "text",
+                )
             return (message.message_id, int(chat_id))
     except Exception as e:
         logger.error(f"Error sending to Telegram: {e}")

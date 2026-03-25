@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 
 from providers.groq import GroqProvider
+from database.managers import MessageManager
 
 
 async def transcription_handler(update: Update, context: CallbackContext):
@@ -20,6 +21,22 @@ async def transcription_handler(update: Update, context: CallbackContext):
     await _audio_file.download_to_drive(file_path)
 
     tanscripted = GroqProvider().transcribe_audio(file_path)
+
+    from_user = None
+    if message.from_user:
+        from_user = message.from_user.username or message.from_user.first_name
+
+    MessageManager.add_message(
+        telegram_message_id=message.message_id,
+        text=f"[Voice message - {tanscripted}]",
+        chat_id=message.chat_id,
+        from_user=from_user,
+        to_user=None,
+        reply_to_message_id=None,
+        reply_text=None,
+        message_type="voice_transcription",
+    )
+
     final_message = f"*{user.first_name}* disse: {tanscripted}"
     os.remove(file_path)
     await status_message.edit_text(final_message, parse_mode="markdown")

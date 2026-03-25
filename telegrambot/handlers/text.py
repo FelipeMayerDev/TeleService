@@ -33,18 +33,6 @@ def is_bot_mentioned(update: Update) -> bool:
 
 
 async def text_handler(update: Update, context: CallbackContext):
-    MessageManager.add_message(
-        telegram_message_id=update.message.message_id,
-        text=update.message.text,
-        chat_id=update.message.chat_id,
-        from_user=update.message.from_user.username,
-        to_user=update.message.reply_to_message.from_user.username
-        if update.message.reply_to_message
-        else None,
-        reply_to_message_id=update.message.reply_to_message.message_id
-        if update.message.reply_to_message
-        else None,
-    )
     if is_allowed_link(update.message.text):
         await get_media(update, context)
 

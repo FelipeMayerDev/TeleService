@@ -116,7 +116,12 @@ async def get_playing_profiles(profiles: list[str]) -> dict:
 
             message = f"🎮 {profile} está jogando {game}"
             print(message)
-            await send_telegram_message(text=message, photo=image_url)
+            await send_telegram_message(
+                text=message,
+                photo=image_url,
+                save_to_db=True,
+                message_type="steam_notification",
+            )
 
         playing_profiles[profile] = {
             "is_playing": is_playing,

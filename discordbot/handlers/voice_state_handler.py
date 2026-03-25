@@ -3,13 +3,17 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional, Set
 
-from peewee import DoesNotExist
 from telegram import Bot
 
-from database.models import Message
 from shared import edit_telegram_message, send_telegram_message
 
 logger = logging.getLogger(__name__)
+
+
+def get_message_model():
+    from database.models import Message
+
+    return Message
 
 
 @dataclass
@@ -73,7 +77,7 @@ class VoiceStateHandler:
 
         last_message_id = await self._get_last_voice_state_message_id()
 
-        if last_message_id:
+        if last_message_id and await self._is_message_in_last_5(last_message_id):
             edited = await self._edit_last_message(last_message_id, text)
             if edited:
                 self._clear_pending_changes()
@@ -114,6 +118,7 @@ class VoiceStateHandler:
             return None
 
         try:
+            Message = get_message_model()
             msg = (
                 Message.select()
                 .where(
@@ -129,28 +134,28 @@ class VoiceStateHandler:
             logger.error(f"Error getting last voice state message: {e}")
             return None
 
+    async def _is_message_in_last_5(self, message_id: int) -> bool:
+        if self.telegram_chat_id is None:
+            return False
+
         try:
-            msg = (
+            Message = get_message_model()
+            last_5_messages = (
                 Message.select()
-                .where(
-                    (Message.chat_id == self.telegram_chat_id)
-                    & (Message.message_type == "voice_state")
-                )
+                .where(Message.chat_id == self.telegram_chat_id)
                 .order_by(Message.created_at.desc())
-                .first()
+                .limit(5)
             )
 
-            if msg:
-                logger.info(
-                    f"Found last voice_state message: ID={msg.id}, telegram_message_id={msg.telegram_message_id}"
-                )
-                return msg.telegram_message_id
-            else:
-                logger.info("No voice_state message found in database")
-                return None
+            for msg in last_5_messages:
+                if msg.telegram_message_id == message_id:
+                    return True
+
+            logger.info(f"Message {message_id} not in last 5 messages of the chat")
+            return False
         except Exception as e:
-            logger.error(f"Error getting last voice state message: {e}")
-            return None
+            logger.error(f"Error checking if message is in last 5: {e}")
+            return False
 
     async def _edit_last_message(self, message_id: int, text: str) -> bool:
         if self.bot is None or self.telegram_chat_id is None:
@@ -179,28 +184,30 @@ class VoiceStateHandler:
                 token=self.bot.token,
                 chat_id=str(self.telegram_chat_id),
                 text=text,
+                save_to_db=True,
+                message_type="voice_state",
             )
 
             if result:
                 message_id, chat_id = result
-                self._save_message_to_db(message_id, chat_id, text)
         except Exception as e:
             logger.error(f"Error sending new message: {e}")
 
     def _update_message_in_db(self, message_id: int, text: str) -> None:
         try:
+            Message = get_message_model()
             msg = Message.get(Message.telegram_message_id == message_id)
             msg.text = text
             msg.save()
             logger.debug(f"Updated message {message_id} in database")
-        except DoesNotExist:
+        except Exception:
             logger.warning(f"Message {message_id} not found in database")
-        except Exception as e:
-            logger.error(f"Error updating message in database: {e}")
 
     def _save_message_to_db(self, message_id: int, chat_id: int, text: str) -> None:
         try:
-            Message.create(
+            from database.managers import MessageManager
+
+            MessageManager.add_message(
                 telegram_message_id=message_id,
                 text=text,
                 chat_id=chat_id,
