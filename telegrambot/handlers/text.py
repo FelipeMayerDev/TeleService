@@ -36,7 +36,9 @@ async def text_handler(update: Update, context: CallbackContext):
     try:
         from_user = None
         if update.message.from_user:
-            from_user = update.message.from_user.username or update.message.from_user.first_name
+            from_user = (
+                update.message.from_user.username or update.message.from_user.first_name
+            )
 
         reply_to_message_id = None
         reply_text = None
@@ -45,7 +47,10 @@ async def text_handler(update: Update, context: CallbackContext):
             reply_to_message_id = update.message.reply_to_message.message_id
             reply_text = update.message.reply_to_message.text
             if update.message.reply_to_message.from_user:
-                to_user = update.message.reply_to_message.from_user.username or update.message.reply_to_message.from_user.first_name
+                to_user = (
+                    update.message.reply_to_message.from_user.username
+                    or update.message.reply_to_message.from_user.first_name
+                )
 
         MessageManager.add_message(
             telegram_message_id=update.message.message_id,
@@ -74,9 +79,6 @@ async def text_handler(update: Update, context: CallbackContext):
             context_message_user = update.message.from_user.full_name
             full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
             ia_response = ZAIProvider().chat(full_prompt)
-            await update.message.reply_text(ia_response, parse_mode="markdown")
-        else:
-            ia_response = ZAIProvider().chat(update.message.text)
             await update.message.reply_text(ia_response, parse_mode="markdown")
         else:
             ia_response = ZAIProvider().chat(update.message.text)
