@@ -1,3 +1,4 @@
+import logging
 import sys
 from pathlib import Path
 
@@ -10,9 +11,11 @@ from providers.zai import ZAIProvider
 from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_link, is_allowed_link
 
+logger = logging.getLogger(__name__)
+
 
 def is_bot_mentioned(update: Update) -> bool:
-    """Check if the bot @fimosin_bot is mentioned in the message."""
+    """Check if bot @fimosin_bot is mentioned in message."""
     if not update.message or not update.message.text:
         return False
 
@@ -33,29 +36,35 @@ def is_bot_mentioned(update: Update) -> bool:
 
 
 async def text_handler(update: Update, context: CallbackContext):
+    if not update.message:
+        return
+
+    message = update.message
+
+    if not message.text:
+        return
+
     try:
         from_user = None
-        if update.message.from_user:
-            from_user = (
-                update.message.from_user.username or update.message.from_user.first_name
-            )
+        if message.from_user:
+            from_user = message.from_user.username or message.from_user.first_name
 
         reply_to_message_id = None
         reply_text = None
         to_user = None
-        if update.message.reply_to_message:
-            reply_to_message_id = update.message.reply_to_message.message_id
-            reply_text = update.message.reply_to_message.text
-            if update.message.reply_to_message.from_user:
+        if message.reply_to_message:
+            reply_to_message_id = message.reply_to_message.message_id
+            reply_text = message.reply_to_message.text
+            if message.reply_to_message.from_user:
                 to_user = (
-                    update.message.reply_to_message.from_user.username
-                    or update.message.reply_to_message.from_user.first_name
+                    message.reply_to_message.from_user.username
+                    or message.reply_to_message.from_user.first_name
                 )
 
         MessageManager.add_message(
-            telegram_message_id=update.message.message_id,
-            text=update.message.text,
-            chat_id=update.message.chat_id,
+            telegram_message_id=message.message_id,
+            text=message.text,
+            chat_id=message.chat_id,
             from_user=from_user,
             to_user=to_user,
             reply_to_message_id=reply_to_message_id,
@@ -63,23 +72,32 @@ async def text_handler(update: Update, context: CallbackContext):
             message_type="text",
         )
     except Exception as e:
-        print(f"Error logging text message: {e}")
+        logger.error(f"Error logging text message: {e}", exc_info=True)
 
-    if is_allowed_link(update.message.text):
+    if is_allowed_link(message.text):
         await get_media(update, context)
 
     # Check if bot is mentioned
     if is_bot_mentioned(update):
         # Verificar se é um reply (mencionado) ou se é uma mensagem simples
         # caso seja reply, enviar mensagem original e mensagem do reply como contexto
-        if update.message.reply_to_message:
-            reply_message = update.message.reply_to_message.text
-            reply_message_user = update.message.reply_to_message.from_user.full_name
-            context_message = update.message.text
-            context_message_user = update.message.from_user.full_name
+        if message.reply_to_message:
+            reply_message = message.reply_to_message.text
+            reply_message_user = (
+                message.reply_to_message.from_user.full_name
+                if message.reply_to_message.from_user
+                else "Unknown"
+            )
+            context_message = message.text
+            context_message_user = (
+                message.from_user.full_name if message.from_user else "Unknown"
+            )
             full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
             ia_response = ZAIProvider().chat(full_prompt)
-            await update.message.reply_text(ia_response, parse_mode="markdown")
+            await message.reply_text(ia_response, parse_mode="markdown")
+        else:
+            ia_response = ZAIProvider().chat(message.text)
+            await message.reply_text(ia_response, parse_mode="markdown")
         else:
             ia_response = ZAIProvider().chat(update.message.text)
             await update.message.reply_text(ia_response, parse_mode="markdown")
