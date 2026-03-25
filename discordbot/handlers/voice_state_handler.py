@@ -24,7 +24,8 @@ class VoiceStateHandler:
         default_factory=lambda: {"joined": set(), "left": set()}
     )
     _timer_task: Optional[asyncio.Task] = None
-    _online_users: Set[str] = field(default_factory=set)
+    _voice_channel_before: Optional[object] = None
+    _voice_channel_after: Optional[object] = None
 
     async def handle_voice_state(self, member, before, after) -> None:
         if member.bot:
@@ -37,14 +38,14 @@ class VoiceStateHandler:
         is_in_voice_before = before.channel is not None
         is_in_voice_after = after.channel is not None
 
+        self._voice_channel_before = before.channel
+        self._voice_channel_after = after.channel
+
         if not is_in_voice_before and is_in_voice_after:
             self._pending_changes["joined"].add(member.display_name)
-            self._online_users.add(member.display_name)
             logger.debug(f"{member.display_name} joined voice")
         elif is_in_voice_before and not is_in_voice_after:
             self._pending_changes["left"].add(member.display_name)
-            if member.display_name in self._online_users:
-                self._online_users.remove(member.display_name)
             logger.debug(f"{member.display_name} left voice")
         else:
             return
@@ -101,14 +102,30 @@ class VoiceStateHandler:
         if lines:
             lines.append("")
 
-        if self._online_users:
+        online_users = self._get_online_users()
+        if online_users:
             lines.append("Usuários online:")
-            for user in sorted(self._online_users):
+            for user in sorted(online_users):
                 lines.append(f"- {user}")
         else:
             lines.append("Não há usuários online")
 
         return "\n".join(lines)
+
+    def _get_online_users(self) -> Set[str]:
+        channel = self._voice_channel_after or self._voice_channel_before
+        if not channel or not hasattr(channel, "members"):
+            return set()
+
+        online_users = set()
+        for member in channel.members:
+            if member.bot:
+                continue
+            if member.display_name in self.ignored_bot_names:
+                continue
+            online_users.add(member.display_name)
+
+        return online_users
 
     async def _get_last_voice_state_message_id(self) -> Optional[int]:
         if self.telegram_chat_id is None:
