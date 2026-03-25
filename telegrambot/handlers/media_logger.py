@@ -50,9 +50,6 @@ async def media_logger(update: Update, context: CallbackContext):
         elif message.audio:
             message_type = "audio"
             text = f"[Audio: {message.audio.title or 'Untitled'}]"
-        elif message.sticker:
-            message_type = "sticker"
-            text = "[Sticker]"
         elif message.document:
             message_type = "document"
             text = f"[Document: {message.document.file_name or 'Unnamed file'}]"

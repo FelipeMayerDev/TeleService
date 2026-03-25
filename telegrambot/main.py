@@ -55,7 +55,6 @@ def main() -> None:
             filters.PHOTO
             | filters.VIDEO
             | filters.AUDIO
-            | filters.STICKER
             | filters.Document.ALL
             | filters.ANIMATION
             | filters.LOCATION
