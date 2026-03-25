@@ -151,8 +151,7 @@ class VoiceStateHandler:
             last_5_messages = message_service.get_last_messages(
                 chat_id=self.telegram_chat_id,
                 platform="telegram",
-                limit=5,
-                from_users=["System", "Discord"],
+                limit=5
             )
 
             for msg in last_5_messages:
