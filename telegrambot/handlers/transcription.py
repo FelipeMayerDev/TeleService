@@ -21,22 +21,37 @@ async def transcription_handler(update: Update, context: CallbackContext):
     await _audio_file.download_to_drive(file_path)
 
     tanscripted = GroqProvider().transcribe_audio(file_path)
+    final_message = f"*{user.first_name}* disse: {tanscripted}"
 
     from_user = None
     if message.from_user:
         from_user = message.from_user.username or message.from_user.first_name
 
-    MessageManager.add_message(
-        telegram_message_id=message.message_id,
-        text=f"[Voice message - {tanscripted}]",
-        chat_id=message.chat_id,
-        from_user=from_user,
-        to_user=None,
-        reply_to_message_id=None,
-        reply_text=None,
-        message_type="voice_transcription",
-    )
+    reply_to_message_id = None
+    reply_text = None
+    to_user = None
+    if message.reply_to_message:
+        reply_to_message_id = message.reply_to_message.message_id
+        reply_text = message.reply_to_message.text or message.reply_to_message.caption
+        if message.reply_to_message.from_user:
+            to_user = (
+                message.reply_to_message.from_user.username
+                or message.reply_to_message.from_user.first_name
+            )
 
-    final_message = f"*{user.first_name}* disse: {tanscripted}"
+    try:
+        MessageManager.add_message(
+            telegram_message_id=message.message_id,
+            text=f"[Voice message - {tanscripted}]",
+            chat_id=message.chat_id,
+            from_user=from_user,
+            to_user=to_user,
+            reply_to_message_id=reply_to_message_id,
+            reply_text=reply_text,
+            message_type="voice",
+        )
+    except Exception as e:
+        print(f"Error logging voice message: {e}")
+
     os.remove(file_path)
     await status_message.edit_text(final_message, parse_mode="markdown")

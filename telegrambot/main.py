@@ -6,7 +6,7 @@ import logging
 from config import TELEGRAM_TOKEN
 from handlers.text import text_handler
 from handlers.transcription import transcription_handler
-from handlers.message_logger import message_logger
+from handlers.media_logger import media_logger
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -49,8 +49,22 @@ def main() -> None:
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Message logger - captures all messages first (group=0)
-    application.add_handler(MessageHandler(filters.ALL, message_logger), group=0)
+    # Media logger - log media messages (photos, videos, etc.)
+    application.add_handler(
+        MessageHandler(
+            filters.PHOTO
+            | filters.VIDEO
+            | filters.AUDIO
+            | filters.STICKER
+            | filters.Document.ALL
+            | filters.ANIMATION
+            | filters.LOCATION
+            | filters.CONTACT
+            | filters.POLL,
+            media_logger,
+        ),
+        group=-1,
+    )
 
     # Commands
     application.add_handler(CommandHandler("faq", faq))
