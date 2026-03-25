@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from telegram import Update
 from telegram.ext import CallbackContext, filters
+from telegram.error import BadRequest
 
 from database.managers import MessageManager
 from providers.zai import ZAIProvider
@@ -62,10 +63,18 @@ async def text_handler(update: Update, context: CallbackContext):
             )
             full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
             ia_response = ZAIProvider().chat(full_prompt)
-            await message.reply_text(ia_response, parse_mode="markdown")
+            try:
+                await message.reply_text(ia_response, parse_mode="markdown")
+            except BadRequest as e:
+                logger.warning(f"Markdown parse error, sending without formatting: {e}")
+                await message.reply_text(ia_response)
         else:
             ia_response = ZAIProvider().chat(message.text)
-            await message.reply_text(ia_response, parse_mode="markdown")
+            try:
+                await message.reply_text(ia_response, parse_mode="markdown")
+            except BadRequest as e:
+                logger.warning(f"Markdown parse error, sending without formatting: {e}")
+                await message.reply_text(ia_response)
 
     # Save to database (only if text exists)
     if not message.text:
