@@ -5,6 +5,7 @@ services:
       dockerfile: discordbot/Dockerfile
       target: discordbot
     env_file: .env
+    network_mode: host
     volumes:
       - ./database.sqlite:/app/database.sqlite
 
