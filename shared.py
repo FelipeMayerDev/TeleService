@@ -206,8 +206,11 @@ async def reply_video_safe(
     parse_mode: Optional[str] = None,
     message_type: str = "video",
     save_to_db: bool = True,
+    thumbnail=None,
 ) -> Message:
-    reply_msg = await message.reply_video(video, caption=caption, parse_mode=parse_mode)
+    reply_msg = await message.reply_video(
+        video, caption=caption, parse_mode=parse_mode, thumbnail=thumbnail
+    )
 
     if save_to_db and reply_msg:
         from_user = None
