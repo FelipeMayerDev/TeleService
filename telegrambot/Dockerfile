@@ -17,6 +17,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 COPY shared.py ./shared.py
 COPY database/ ./database/
 COPY providers/ ./providers/
+COPY domain/ ./domain/
 
 FROM base AS telegrambot
 
