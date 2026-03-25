@@ -98,6 +98,3 @@ async def text_handler(update: Update, context: CallbackContext):
         else:
             ia_response = ZAIProvider().chat(message.text)
             await message.reply_text(ia_response, parse_mode="markdown")
-        else:
-            ia_response = ZAIProvider().chat(update.message.text)
-            await update.message.reply_text(ia_response, parse_mode="markdown")
