@@ -142,7 +142,10 @@ class VoiceStateHandler:
             Message = get_message_model()
             last_5_messages = (
                 Message.select()
-                .where(Message.chat_id == self.telegram_chat_id)
+                .where(
+                    (Message.chat_id == self.telegram_chat_id)
+                    & (Message.from_user.in_(["System", "Discord"]))
+                )
                 .order_by(Message.created_at.desc())
                 .limit(5)
             )
@@ -151,7 +154,7 @@ class VoiceStateHandler:
                 if msg.telegram_message_id == message_id:
                     return True
 
-            logger.info(f"Message {message_id} not in last 5 messages of the chat")
+            logger.info(f"Message {message_id} not in last 5 bot messages of the chat")
             return False
         except Exception as e:
             logger.error(f"Error checking if message is in last 5: {e}")
