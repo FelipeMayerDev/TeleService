@@ -7,7 +7,7 @@ requires-python = ">=3.11"
 dependencies = [
     "aiosqlite>=0.22.1",
     "aiohttp>=3.11.0",
-    "discord.py>=2.5.0",
+    "discord.py>=2.7.1",
     "faster-whisper>=1.2.1",
     "greenlet>=3.3.1",
     "groq>=1.0.0",
