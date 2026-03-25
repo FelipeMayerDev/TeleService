@@ -59,6 +59,11 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         parse_mode="markdown",
     )
     image = SerpProvider().search_image(query)
+    if not image:
+        await message.edit_text(
+            f"Não foi possível encontrar imagens para '{query}'. Tente novamente com outro termo."
+        )
+        return
     keyboard = InlineKeyboardMarkup(
         [
             [
@@ -82,6 +87,11 @@ async def search_image_callback(update: Update, context) -> None:
     user = update.effective_user
     await update.callback_query.answer("Buscando outra imagem...")
     image = SerpProvider().search_image(query)
+    if not image:
+        await update.callback_query.message.reply_text(
+            f"Não foi possível encontrar imagens para '{query}'. Tente novamente com outro termo."
+        )
+        return
     keyboard = InlineKeyboardMarkup(
         [
             [
