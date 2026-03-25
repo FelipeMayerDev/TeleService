@@ -41,6 +41,33 @@ async def text_handler(update: Update, context: CallbackContext):
 
     message = update.message
 
+    # Check for media links
+    if message.text and is_allowed_link(message.text):
+        await get_media(update, context)
+
+    # Check if bot is mentioned
+    if is_bot_mentioned(update):
+        # Verificar se é um reply (mencionado) ou se é uma mensagem simples
+        # caso seja reply, enviar mensagem original e mensagem do reply como contexto
+        if message.reply_to_message:
+            reply_message = message.reply_to_message.text
+            reply_message_user = (
+                message.reply_to_message.from_user.full_name
+                if message.reply_to_message.from_user
+                else "Unknown"
+            )
+            context_message = message.text
+            context_message_user = (
+                message.from_user.full_name if message.from_user else "Unknown"
+            )
+            full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
+            ia_response = ZAIProvider().chat(full_prompt)
+            await message.reply_text(ia_response, parse_mode="markdown")
+        else:
+            ia_response = ZAIProvider().chat(message.text)
+            await message.reply_text(ia_response, parse_mode="markdown")
+
+    # Save to database (only if text exists)
     if not message.text:
         return
 
@@ -73,28 +100,3 @@ async def text_handler(update: Update, context: CallbackContext):
         )
     except Exception as e:
         logger.error(f"Error logging text message: {e}", exc_info=True)
-
-    if is_allowed_link(message.text):
-        await get_media(update, context)
-
-    # Check if bot is mentioned
-    if is_bot_mentioned(update):
-        # Verificar se é um reply (mencionado) ou se é uma mensagem simples
-        # caso seja reply, enviar mensagem original e mensagem do reply como contexto
-        if message.reply_to_message:
-            reply_message = message.reply_to_message.text
-            reply_message_user = (
-                message.reply_to_message.from_user.full_name
-                if message.reply_to_message.from_user
-                else "Unknown"
-            )
-            context_message = message.text
-            context_message_user = (
-                message.from_user.full_name if message.from_user else "Unknown"
-            )
-            full_prompt = f"{reply_message_user}: {reply_message}\n{context_message_user}: {context_message}"
-            ia_response = ZAIProvider().chat(full_prompt)
-            await message.reply_text(ia_response, parse_mode="markdown")
-        else:
-            ia_response = ZAIProvider().chat(message.text)
-            await message.reply_text(ia_response, parse_mode="markdown")
