@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 class MusicPlayer:
     TIMEOUT_SECONDS = 300
+    MAX_RECONNECT_ATTEMPTS = 3
 
     def __init__(self, guild_id: int):
         self.guild_id = guild_id
@@ -26,12 +27,14 @@ class MusicPlayer:
         self.original_queue: list = []
         self.current: Optional[dict] = None
         self.voice_client: Optional[discord.VoiceClient] = None
+        self.voice_channel: Optional[discord.VoiceChannel] = None
         self.is_playing: bool = False
         self.is_paused: bool = False
         self.is_shuffle: bool = False
         self.last_played: float = 0
         self.timeout_task: Optional[asyncio.Task] = None
         self.player_message: Optional[discord.Message] = None
+        self.reconnect_attempts: int = 0
 
     def add_to_queue(self, song: dict) -> bool:
         try:
@@ -102,17 +105,57 @@ class MusicPlayer:
                 await self._start_timeout()
                 return False
 
+            if not self.voice_client or not self.voice_client.is_connected():
+                if self.voice_channel:
+                    if self.reconnect_attempts >= self.MAX_RECONNECT_ATTEMPTS:
+                        logger.error(
+                            f"Max reconnection attempts reached for guild {self.guild_id}"
+                        )
+                        self.is_playing = False
+                        return False
+
+                    self.reconnect_attempts += 1
+                    logger.info(
+                        f"Voice client disconnected, reconnecting (attempt {self.reconnect_attempts}/{self.MAX_RECONNECT_ATTEMPTS}) for guild {self.guild_id}"
+                    )
+
+                    try:
+                        self.voice_client = await self.voice_channel.connect(
+                            self_deaf=True
+                        )
+                        await asyncio.sleep(1)
+                        self.reconnect_attempts = 0
+                        logger.info(
+                            f"Successfully reconnected to voice for guild {self.guild_id}"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to reconnect voice for guild {self.guild_id}: {e}"
+                        )
+                        self.is_playing = False
+                        return False
+                else:
+                    logger.error(
+                        f"Voice client not connected for guild {self.guild_id}"
+                    )
+                    return False
+
             self.current = self.queue.pop(0)
             self.is_playing = True
             self.is_paused = False
             self.last_played = asyncio.get_event_loop().time()
 
+            logger.info(f"Fetching audio source for: {self.current['title']}")
             source = get_audio_source(self.current["url"])
 
-            if not self.voice_client or not self.voice_client.is_connected():
-                logger.error(f"Voice client not connected for guild {self.guild_id}")
+            if not source:
+                logger.error(f"Failed to get audio source for: {self.current['title']}")
+                self.is_playing = False
                 return False
 
+            logger.info(
+                f"Starting playback of: {self.current['title']} in guild {self.guild_id}"
+            )
             self.voice_client.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(
@@ -125,6 +168,14 @@ class MusicPlayer:
             )
             return True
 
+        except discord.errors.ConnectionClosed as e:
+            logger.error(
+                f"Connection closed with code {e.code} while playing in guild {self.guild_id}"
+            )
+            if e.code == 4017:
+                logger.warning(f"Voice mode error 4017, will attempt to reconnect")
+            self.is_playing = False
+            return False
         except Exception as e:
             logger.error(f"Error playing next track: {e}")
             self.is_playing = False
@@ -199,6 +250,8 @@ class MusicPlayer:
             if self.voice_client and self.voice_client.is_connected():
                 await self.voice_client.disconnect()
                 self.voice_client = None
+                self.voice_channel = None
+                self.reconnect_attempts = 0
                 self.clear_queue()
                 self.current = None
                 self.is_playing = False
@@ -235,6 +288,12 @@ class MusicPlayer:
             logger.info(f"Timeout cancelled for guild {self.guild_id}")
         except Exception as e:
             logger.error(f"Error in timeout handler: {e}")
+
+    def set_voice_channel(self, voice_channel):
+        self.voice_channel = voice_channel
+        logger.debug(
+            f"Voice channel set to {voice_channel.name} for guild {self.guild_id}"
+        )
 
     def get_queue_position(self, song: dict) -> int:
         try:

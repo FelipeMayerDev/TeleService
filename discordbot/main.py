@@ -52,6 +52,16 @@ async def on_ready():
 
 @client.event
 async def on_voice_state_update(member, before, after):
+    if member == client.user:
+        if before.channel and not after.channel:
+            logger.warning(
+                f"Bot disconnected from voice channel in guild {member.guild.id}"
+            )
+        elif after.channel and not before.channel:
+            logger.info(f"Bot connected to voice channel in guild {member.guild.id}")
+        elif before.channel != after.channel:
+            logger.info(f"Bot moved voice channels in guild {member.guild.id}")
+
     if voice_state_handler:
         await voice_state_handler.handle_voice_state(member, before, after)
 

@@ -104,9 +104,14 @@ async def handle_play_command(message: discord.Message, args: str):
         if not player.is_playing or player.is_paused:
             if player.voice_client and player.voice_client.is_connected():
                 if voice_channel != player.voice_client.channel:
+                    logger.info(f"Moving voice client to channel: {voice_channel.name}")
                     await player.voice_client.move_to(voice_channel)
+                    player.set_voice_channel(voice_channel)
             else:
-                player.voice_client = await voice_channel.connect()
+                logger.info(f"Connecting to voice channel: {voice_channel.name}")
+                player.voice_client = await voice_channel.connect(self_deaf=True)
+                player.set_voice_channel(voice_channel)
+                await asyncio.sleep(1)
 
             await player.play_next()
 

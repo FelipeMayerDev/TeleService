@@ -53,8 +53,8 @@ YTDL_FORMAT_OPTIONS = {
 }
 
 FFMPEG_OPTIONS = {
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options": "-vn -b:a 192k",
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -reconnect_on_network_error 1 -reconnect_on_http_error 1",
+    "options": "-vn -b:a 192k -bufsize 256k",
 }
 
 
@@ -74,6 +74,7 @@ class LyricsError(Exception):
 
 def get_audio_source(url: str) -> Optional[discord.FFmpegOpusAudio]:
     try:
+        logger.info(f"Extracting audio info from URL: {url}")
         info = ytdl.extract_info(url, download=False)
 
         if "entries" in info:
@@ -93,11 +94,13 @@ def get_audio_source(url: str) -> Optional[discord.FFmpegOpusAudio]:
         if not audio_url:
             raise YTDLError("No audio URL found")
 
+        logger.info(f"Creating FFmpeg audio source from extracted URL")
         source = discord.FFmpegOpusAudio(audio_url, **FFMPEG_OPTIONS)
 
+        logger.debug("Audio source created successfully")
         return source
     except Exception as e:
-        logger.error(f"Error getting audio source: {e}")
+        logger.error(f"Error getting audio source from {url}: {type(e).__name__}: {e}")
         raise YTDLError(str(e))
 
 
