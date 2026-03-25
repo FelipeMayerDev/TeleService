@@ -18,9 +18,21 @@ from telegrambot.handlers.utils import get_media_from_link
 async def get_media(update: Update, context: CallbackContext):
     link = update.message.text
     user = update.effective_user
-    media = get_media_from_link(link)
+
+    try:
+        media = get_media_from_link(link)
+    except Exception as e:
+        await reply_text_safe(
+            update.message,
+            "❌ Erro ao obter informações do link.",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
     if not media:
         return
+
     status_message = await reply_text_safe(
         update.message,
         "Pegando media do link...",
@@ -44,45 +56,62 @@ async def get_media(update: Update, context: CallbackContext):
         await status_message.delete()
     except Exception:
         await status_message.edit_text("⏳ Deu ruim, vamos ter que baixar o vídeo...")
-        response = requests.get(media[0], stream=True)
-        total_size = int(response.headers.get("content-length", 0))
-        downloaded = 0
-
         video_buffer = io.BytesIO()
-        chunk_size = 1024 * 1024
-        last_update = 0
+        thumb_buffer = None
 
-        for chunk in response.iter_content(chunk_size=chunk_size):
-            if chunk:
-                video_buffer.write(chunk)
-                downloaded += len(chunk)
+        try:
+            response = requests.get(media[0], stream=True, timeout=30)
+            response.raise_for_status()
+            total_size = int(response.headers.get("content-length", 0))
+            downloaded = 0
 
-                if total_size > 0:
-                    progress = int((downloaded / total_size) * 100)
-                    current_mb = downloaded / 1024 / 1024
-                    total_mb = total_size / 1024 / 1024
+            chunk_size = 1024 * 1024
+            last_update = 0
 
-                    if progress - last_update >= 10 or progress == 100:
-                        progress_bar = "█" * (progress // 10) + "░" * (
-                            10 - progress // 10
-                        )
-                        await status_message.edit_text(
-                            f"⏳ Baixando... {progress}%\n"
-                            f"[{progress_bar}]\n"
-                            f"📊 {current_mb:.1f}MB / {total_mb:.1f}MB"
-                        )
-                        last_update = progress
+            for chunk in response.iter_content(chunk_size=chunk_size):
+                if chunk:
+                    video_buffer.write(chunk)
+                    downloaded += len(chunk)
 
-        video_buffer.name = "video.mp4"
-        video_buffer.seek(0)
+                    if total_size > 0:
+                        progress = int((downloaded / total_size) * 100)
+                        current_mb = downloaded / 1024 / 1024
+                        total_mb = total_size / 1024 / 1024
 
-        if video_buffer.getbuffer().nbytes == 0:
-            await status_message.edit_text("❌ Erro: buffer de vídeo vazio")
+                        if progress - last_update >= 10 or progress == 100:
+                            progress_bar = "█" * (progress // 10) + "░" * (
+                                10 - progress // 10
+                            )
+                            await status_message.edit_text(
+                                f"⏳ Baixando... {progress}%\n"
+                                f"[{progress_bar}]\n"
+                                f"📊 {current_mb:.1f}MB / {total_mb:.1f}MB"
+                            )
+                            last_update = progress
+
+            video_buffer.name = "video.mp4"
+            video_buffer.seek(0)
+
+            if video_buffer.getbuffer().nbytes == 0:
+                await status_message.edit_text("❌ Erro: buffer de vídeo vazio")
+                video_buffer.close()
+                await status_message.delete()
+                return
+
+            if video_buffer.getbuffer().nbytes < 1024:
+                await status_message.edit_text(
+                    "❌ Erro: vídeo muito pequeno ou corrompido"
+                )
+                video_buffer.close()
+                await status_message.delete()
+                return
+
+        except Exception as e:
+            await status_message.edit_text(f"❌ Erro ao baixar o vídeo: {str(e)}")
             video_buffer.close()
             await status_message.delete()
             return
 
-        thumb_buffer = None
         if thumbnail_url:
             try:
                 thumb_response = requests.get(thumbnail_url, timeout=10)
@@ -96,24 +125,34 @@ async def get_media(update: Update, context: CallbackContext):
             except Exception:
                 pass
 
-        await status_message.edit_text("📤 Enviando vídeo...")
-        if thumb_buffer and thumb_buffer.getbuffer().nbytes > 0:
-            await reply_video_safe(
-                update.message,
-                video=video_buffer,
-                caption=final_caption,
-                thumbnail=thumb_buffer,
-                parse_mode="markdown",
-                message_type="media",
+        try:
+            await status_message.edit_text("📤 Enviando vídeo...")
+            if thumb_buffer and thumb_buffer.getbuffer().nbytes > 0:
+                await reply_video_safe(
+                    update.message,
+                    video=video_buffer,
+                    caption=final_caption,
+                    thumbnail=thumb_buffer,
+                    parse_mode="markdown",
+                    message_type="media",
+                )
+                thumb_buffer.close()
+            else:
+                await reply_video_safe(
+                    update.message,
+                    video=video_buffer,
+                    caption=final_caption,
+                    parse_mode="markdown",
+                    message_type="media",
+                )
+            video_buffer.close()
+            await status_message.delete()
+        except Exception as e:
+            await status_message.edit_text(
+                f"❌ Erro ao enviar o vídeo baixado: {str(e)}"
             )
-            thumb_buffer.close()
-        else:
-            await reply_video_safe(
-                update.message,
-                video=video_buffer,
-                caption=final_caption,
-                parse_mode="markdown",
-                message_type="media",
-            )
-        video_buffer.close()
-        await status_message.delete()
+            video_buffer.close()
+            if thumb_buffer:
+                thumb_buffer.close()
+            await status_message.delete()
+            return
