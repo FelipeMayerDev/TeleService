@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime
 from typing import Optional
 
 from ..entities.message import MessageEntity
 from ..repositories.message_repository import MessageRepository
+
+logger = logging.getLogger(__name__)
 
 
 class MessageService:
@@ -38,7 +41,8 @@ class MessageService:
         try:
             self.repository.create_message(entity)
             return True
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to save message to database: {e}", exc_info=True)
             return False
 
     def get_message(self, message_id: int) -> Optional[MessageEntity]:

@@ -4,16 +4,13 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from telegram import Update
-from telegram.ext import CallbackContext, filters
+from telegram.ext import CallbackContext
 from telegram.error import BadRequest
 
-from domain import MessageService
 from providers.zai import ZAIProvider
 from shared import reply_text_safe
 from telegrambot.handlers.media import get_media
-from telegrambot.handlers.utils import is_link, is_allowed_link
-
-message_service = MessageService()
+from telegrambot.handlers.utils import is_allowed_link
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +20,9 @@ def is_bot_mentioned(update: Update) -> bool:
     if not update.message or not update.message.text:
         return False
 
-    # Check text first for simple mentions
     if "@fimosin_bot" in update.message.text:
         return True
 
-    # Check entities for proper mentions
     if update.message.entities:
         for entity in update.message.entities:
             if entity.type == "mention":
@@ -45,14 +40,10 @@ async def text_handler(update: Update, context: CallbackContext):
 
     message = update.message
 
-    # Check for media links
     if message.text and is_allowed_link(message.text):
         await get_media(update, context)
 
-    # Check if bot is mentioned
     if is_bot_mentioned(update):
-        # Verificar se é um reply (mencionado) ou se é uma mensagem simples
-        # caso seja reply, enviar mensagem original e mensagem do reply como contexto
         if message.reply_to_message:
             reply_message = message.reply_to_message.text
             reply_message_user = (
@@ -88,37 +79,3 @@ async def text_handler(update: Update, context: CallbackContext):
             except BadRequest as e:
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
                 await reply_text_safe(message, ia_response, message_type="ai_response")
-
-    # Save to database (only if text exists)
-    if not message.text:
-        return
-
-    try:
-        from_user = None
-        if message.from_user:
-            from_user = message.from_user.username or message.from_user.first_name
-
-        reply_to_message_id = None
-        reply_text = None
-        to_user = None
-        if message.reply_to_message:
-            reply_to_message_id = message.reply_to_message.message_id
-            reply_text = message.reply_to_message.text
-            if message.reply_to_message.from_user:
-                to_user = (
-                    message.reply_to_message.from_user.username
-                    or message.reply_to_message.from_user.first_name
-                )
-
-        message_service.add_telegram_message(
-            telegram_message_id=message.message_id,
-            text=message.text,
-            chat_id=message.chat_id,
-            from_user=from_user,
-            to_user=to_user,
-            reply_to_message_id=reply_to_message_id,
-            reply_text=reply_text,
-            message_type="text",
-        )
-    except Exception as e:
-        logger.error(f"Error logging text message: {e}", exc_info=True)

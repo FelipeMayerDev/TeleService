@@ -6,7 +6,7 @@ import logging
 from config import TELEGRAM_TOKEN
 from handlers.text import text_handler
 from handlers.transcription import transcription_handler
-from handlers.media_logger import media_logger
+from handlers.catch_all import catch_all_handler, catch_all_edited_handler
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -25,18 +25,12 @@ from telegrambot.handlers.commands import (
     search_image_callback,
 )
 
-# Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
-# set higher logging level for httpx to avoid all GET and POST requests being logged
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
-
-
-# Define a few command handlers. These usually take the two arguments update and
-# context.
 
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -46,23 +40,17 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Start the bot."""
-    # Create the Application and pass it your bot's token.
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Media logger - log media messages (photos, videos, etc.)
+    # Catch-all - save ALL messages to database
     application.add_handler(
-        MessageHandler(
-            filters.PHOTO
-            | filters.VIDEO
-            | filters.AUDIO
-            | filters.Document.ALL
-            | filters.ANIMATION
-            | filters.LOCATION
-            | filters.CONTACT
-            | filters.POLL,
-            media_logger,
-        ),
-        group=-1,
+        MessageHandler(filters.ALL, catch_all_handler),
+        group=-2,
+    )
+    # Catch-all for edited messages
+    application.add_handler(
+        MessageHandler(filters.UpdateType.EDITED_MESSAGE, catch_all_edited_handler),
+        group=-2,
     )
 
     # Commands
@@ -73,11 +61,11 @@ def main() -> None:
     application.add_handler(
         CallbackQueryHandler(search_image_callback, pattern="^search_image:")
     )
-    # Funções
+    # Voice/Video Note transcription
     application.add_handler(
         MessageHandler(filters.VOICE | filters.VIDEO_NOTE, transcription_handler)
     )
-    # Text
+    # Text (AI responses only, no DB save - catch-all handles that)
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler),
     )
