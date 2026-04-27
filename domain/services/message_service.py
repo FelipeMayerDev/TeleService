@@ -89,6 +89,14 @@ class MessageService:
             for msg in messages
         ]
 
+    def get_last_voice_state_in_recent(
+        self, chat_id: int, platform: str = "telegram", limit: int = 5
+    ) -> Optional[int]:
+        message = self.repository.get_last_voice_state_in_recent(
+            chat_id=chat_id, platform=platform, limit=limit
+        )
+        return message.platform_message_id if message else None
+
     def get_last_message_by_type(
         self, chat_id: int, message_type: str, platform: str = "telegram"
     ) -> Optional[MessageEntity]:

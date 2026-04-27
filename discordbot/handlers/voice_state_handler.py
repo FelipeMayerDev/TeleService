@@ -73,10 +73,10 @@ class VoiceStateHandler:
             self._clear_pending_changes()
             return
 
-        last_message_id = await self._get_last_voice_state_message_id()
+        message_id = self._get_voice_state_message_id_to_edit()
 
-        if last_message_id and await self._is_message_in_last_5(last_message_id):
-            edited = await self._edit_last_message(last_message_id, text)
+        if message_id:
+            edited = await self._edit_last_message(message_id, text)
             if edited:
                 self._clear_pending_changes()
                 return
@@ -127,42 +127,19 @@ class VoiceStateHandler:
 
         return online_users
 
-    async def _get_last_voice_state_message_id(self) -> Optional[int]:
+    def _get_voice_state_message_id_to_edit(self) -> Optional[int]:
         if self.telegram_chat_id is None:
             return None
 
         try:
-            msg = message_service.get_last_message_by_type(
+            return message_service.get_last_voice_state_in_recent(
                 chat_id=self.telegram_chat_id,
-                message_type="voice_state",
                 platform="telegram",
+                limit=5,
             )
-
-            return msg.platform_message_id if msg else None
         except Exception as e:
-            logger.error(f"Error getting last voice state message: {e}")
+            logger.error(f"Error getting voice state message to edit: {e}")
             return None
-
-    async def _is_message_in_last_5(self, message_id: int) -> bool:
-        if self.telegram_chat_id is None:
-            return False
-
-        try:
-            last_5_messages = message_service.get_last_messages(
-                chat_id=self.telegram_chat_id,
-                platform="telegram",
-                limit=5
-            )
-
-            for msg in last_5_messages:
-                if msg.platform_message_id == message_id:
-                    return True
-
-            logger.info(f"Message {message_id} not in last 5 bot messages of the chat")
-            return False
-        except Exception as e:
-            logger.error(f"Error checking if message is in last 5: {e}")
-            return False
 
     async def _edit_last_message(self, message_id: int, text: str) -> bool:
         if self.bot is None or self.telegram_chat_id is None:

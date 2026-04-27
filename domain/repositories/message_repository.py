@@ -50,6 +50,22 @@ class MessageRepository(BaseRepository[Message]):
 
         return list(query.order_by(self.model.created_at.desc()).limit(limit))
 
+    def get_last_voice_state_in_recent(
+        self, chat_id: int, platform: str = "telegram", limit: int = 5
+    ) -> Optional[Message]:
+        recent = list(
+            self.model.select()
+            .where(
+                (self.model.chat_id == chat_id) & (self.model.platform == platform)
+            )
+            .order_by(self.model.created_at.desc())
+            .limit(limit)
+        )
+        for msg in recent:
+            if msg.message_type == "voice_state":
+                return msg
+        return None
+
     def get_last_message_by_type(
         self, chat_id: int, message_type: str, platform: str = "telegram"
     ) -> Optional[Message]:
