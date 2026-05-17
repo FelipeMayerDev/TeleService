@@ -15,13 +15,29 @@ async def transcription_handler(update: Update, context: CallbackContext):
     message = update.message
     status_message = await message.reply_text("Transcription in progress...")
 
-    _audio_file = await message.voice.get_file()
+    if message.voice:
+        attachment = message.voice
+        file_ext = "ogg"
+    elif message.video_note:
+        attachment = message.video_note
+        file_ext = "mp4"
+    else:
+        await status_message.edit_text("Tipo de mensagem não suportado.")
+        return
 
-    file_path = f"/tmp/{_audio_file.file_id}.ogg"
+    _audio_file = await attachment.get_file()
+
+    file_path = f"/tmp/{_audio_file.file_id}.{file_ext}"
     await _audio_file.download_to_drive(file_path)
 
-    tanscripted = GroqProvider().transcribe_audio(file_path)
-    final_message = f"*{user.first_name}* disse: {tanscripted}"
+    transcribed = GroqProvider().transcribe_audio(file_path)
+
+    if not transcribed:
+        await status_message.edit_text("Não foi possível transcrever o áudio.")
+        os.remove(file_path)
+        return
+
+    final_message = f"*{user.first_name}* disse: {transcribed}"
 
     os.remove(file_path)
     await status_message.edit_text(final_message, parse_mode="markdown")
