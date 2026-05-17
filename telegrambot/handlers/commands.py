@@ -98,6 +98,7 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         caption=f"{query} - Solicitada por {user.mention_markdown()}",
         parse_mode="markdown",
         message_type="search_image",
+        reply_markup=keyboard,
     )
     await message.delete()
 
@@ -129,4 +130,5 @@ async def search_image_callback(update: Update, context) -> None:
         caption=f"{query} - Solicitada por {user.mention_markdown()}",
         parse_mode="markdown",
         message_type="search_image",
+        reply_markup=keyboard,
     )

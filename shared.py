@@ -162,8 +162,9 @@ async def reply_photo_safe(
     parse_mode: Optional[str] = None,
     message_type: str = "photo",
     save_to_db: bool = True,
+    reply_markup=None,
 ) -> Message:
-    reply_msg = await message.reply_photo(photo, caption=caption, parse_mode=parse_mode)
+    reply_msg = await message.reply_photo(photo, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
 
     if save_to_db and reply_msg:
         from_user = None
