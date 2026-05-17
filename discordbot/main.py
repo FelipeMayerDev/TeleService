@@ -11,7 +11,7 @@ import discord
 from config import DISCORD_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from domain import init_database
 from handlers import music_commands, VoiceStateHandler
-from shared import discord_channel_send_text_safe
+from shared import discord_channel_send_text_safe, send_telegram_message
 from telegram import Bot
 
 logging.basicConfig(
@@ -64,6 +64,26 @@ async def on_voice_state_update(member, before, after):
 
     if voice_state_handler:
         await voice_state_handler.handle_voice_state(member, before, after)
+
+
+@client.event
+async def on_member_join(member):
+    if member.bot:
+        return
+
+    logger.info(f"{member.display_name} joined the server")
+
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    text = f"🎉 {member.display_name} entrou no Discord!"
+    await send_telegram_message(
+        token=TELEGRAM_TOKEN,
+        chat_id=TELEGRAM_CHAT_ID,
+        text=text,
+        save_to_db=True,
+        message_type="member_join",
+    )
 
 
 @client.event
