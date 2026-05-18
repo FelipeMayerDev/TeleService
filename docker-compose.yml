@@ -1,5 +1,6 @@
 services:
   discordbot:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: discordbot/Dockerfile
@@ -10,6 +11,7 @@ services:
       - ./database.sqlite:/app/database.sqlite
 
   telegrambot:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: telegrambot/Dockerfile
@@ -17,8 +19,21 @@ services:
     env_file: .env
     volumes:
       - ./database.sqlite:/app/database.sqlite
+      - telegrambot-db:/app/telegrambot
+      - ./telegrambot/handlers/sticker.py:/app/telegrambot/handlers/sticker.py:ro
+      - ./telegrambot/main.py:/app/telegrambot/main.py:ro
+
+  walter-monitor:
+    restart: unless-stopped
+    image: python:3.11-slim
+    env_file: .env
+    volumes:
+      - telegrambot-db:/data:ro
+      - ./walter_monitor.py:/app/walter_monitor.py:ro
+    entrypoint: ["python", "-u", "/app/walter_monitor.py"]
 
   steam:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: steam/Dockerfile
@@ -26,3 +41,6 @@ services:
     env_file: .env
     volumes:
       - ./database.sqlite:/app/database.sqlite
+
+volumes:
+  telegrambot-db:
