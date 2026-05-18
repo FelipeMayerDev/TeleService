@@ -28,6 +28,33 @@ profiles_to_watch = PROFILES.split(",") if PROFILES else []
 
 playing_profiles = {}
 
+IMAGE_CACHE: dict[str, str] = {}
+
+
+def get_game_image(game: str, gameid: str | None) -> str | None:
+    if game in IMAGE_CACHE:
+        return IMAGE_CACHE[game]
+
+    if gameid:
+        cdn_url = f"https://cdn.akamai.steamstatic.com/steam/apps/{gameid}/header.jpg"
+        try:
+            resp = requests.head(cdn_url, timeout=5, allow_redirects=True)
+            if resp.status_code == 200:
+                IMAGE_CACHE[game] = cdn_url
+                return cdn_url
+        except Exception:
+            pass
+
+    try:
+        url = SerpProvider().search_image(image=f"Gameplay {game}")
+        if url:
+            IMAGE_CACHE[game] = url
+            return url
+    except Exception as e:
+        print(f"Error searching image: {e}")
+
+    return None
+
 
 def resolve_vanity_url(vanity_url: str) -> str | None:
     """Resolve vanity URL to Steam64 ID."""
@@ -99,22 +126,18 @@ async def get_playing_profiles(profiles: list[str]) -> dict:
     for steam_id, data in player_data.items():
         profile = profile_map[steam_id]
         game = None
+        gameid = None
         is_playing = False
 
         if "gameextrainfo" in data:
             is_playing = True
             game = data["gameextrainfo"]
+            gameid = data.get("gameid")
             someone_playing = True
 
-        # Check if status changed
         old_status = playing_profiles.get(profile, {}).get("is_playing", False)
         if old_status != is_playing and is_playing:
-            image_url = None
-            try:
-                image_url = SerpProvider().search_image(image=f"Gameplay {game}")
-            except Exception as e:
-                print(f"Error searching image: {e}")
-                pass
+            image_url = get_game_image(game, gameid)
 
             message = f"🎮 {profile} está jogando {game}"
             print(message)
