@@ -91,3 +91,15 @@ class MessageRepository(BaseRepository[Message]):
             self.update(message, text=text)
             return True
         return False
+
+    def delete_by_platform_message_id(
+        self, platform_message_id: int, platform: str = "telegram"
+    ) -> bool:
+        try:
+            message = self.get_by_platform_message_id(platform_message_id, platform)
+            if message:
+                self.delete(message)
+                return True
+            return False
+        except Exception:
+            return False

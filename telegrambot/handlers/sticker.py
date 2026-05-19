@@ -56,15 +56,14 @@ def _download_image(img_bytes_or_url: bytes | str) -> bytes | None:
             raw = img_bytes_or_url
 
         img = Image.open(io.BytesIO(raw)).convert("RGBA")
-        img.thumbnail((512, 512), Image.LANCZOS)
-
-        if img.size[0] != img.size[1]:
-            new_img = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
-            offset = ((512 - img.size[0]) // 2, (512 - img.size[1]) // 2)
-            new_img.paste(img, offset)
-            img = new_img
-        elif img.size[0] != 512:
-            img = img.resize((512, 512), Image.LANCZOS)
+        # Cover-resize: scale to fill 512x512, crop excess (handles small & large)
+        w, h = img.size
+        ratio = max(512 / w, 512 / h)
+        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        w, h = img.size
+        left = (w - 512) // 2
+        top = (h - 512) // 2
+        img = img.crop((left, top, left + 512, top + 512))
 
         out = io.BytesIO()
         img.save(out, format="PNG")
@@ -189,6 +188,43 @@ async def sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await reply_text_safe(
             message, f"❌ Erro: {str(e)}", message_type="error", save_to_db=False,
         )
+
+
+def _delete_sticker_from_set(sticker_file_id: str) -> str:
+    """Deleta um sticker do pack via file_id."""
+    url = f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/deleteStickerFromSet"
+    data = {"sticker": sticker_file_id}
+    resp = req.post(url, data=data, timeout=15).json()
+    if resp.get("ok"):
+        return "✅ Sticker removido do pack!"
+    return f"❌ Erro: {resp.get('description', 'desconhecido')}"
+
+
+async def delete_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove sticker do pack. Responde a um sticker com /delsticker."""
+    message = update.message
+
+    if not message.reply_to_message or not message.reply_to_message.sticker:
+        await reply_text_safe(
+            message, "Responde a um sticker com /delsticker pra remover do pack.",
+            message_type="error", save_to_db=False,
+        )
+        return
+
+    sticker = message.reply_to_message.sticker
+    if not sticker.file_id:
+        await reply_text_safe(
+            message, "❌ Não consegui identificar o sticker.",
+            message_type="error", save_to_db=False,
+        )
+        return
+
+    status = await reply_text_safe(
+        message, "Removendo sticker... 🗑️", message_type="status", save_to_db=False,
+    )
+
+    result = _delete_sticker_from_set(sticker.file_id)
+    await status.edit_text(result)
 
 
 def _extract_url(text: str) -> str | None:

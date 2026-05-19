@@ -73,16 +73,45 @@ class VoiceStateHandler:
             self._clear_pending_changes()
             return
 
-        message_id = self._get_voice_state_message_id_to_edit()
+        # Try to edit the last voice_state message (if recent enough)
+        last_msg = self._get_last_voice_state_message()
 
-        if message_id:
+        if last_msg:
+            message_id = last_msg.platform_message_id
             edited = await self._edit_last_message(message_id, text)
             if edited:
                 self._clear_pending_changes()
                 return
+            else:
+                # Edit failed (message too old or deleted), remove from DB
+                logger.info(f"Message {message_id} too old or gone, sending new one")
+                self._delete_message_from_db(message_id)
 
         await self._send_new_message(text)
         self._clear_pending_changes()
+
+    def _get_last_voice_state_message(self):
+        """Get the last voice_state message from DB."""
+        if self.telegram_chat_id is None:
+            return None
+        try:
+            return message_service.get_last_message_by_type(
+                chat_id=self.telegram_chat_id,
+                message_type="voice_state",
+                platform="telegram",
+            )
+        except Exception as e:
+            logger.error(f"Error getting voice state message: {e}")
+            return None
+
+    def _delete_message_from_db(self, message_id: int):
+        try:
+            message_service.repository.delete_by_platform_message_id(
+                platform_message_id=message_id, platform="telegram"
+            )
+            logger.info(f"Deleted stale message {message_id} from DB")
+        except Exception as e:
+            logger.warning(f"Could not delete message {message_id}: {e}")
 
     def _format_message(self) -> str:
         lines = []
@@ -132,10 +161,10 @@ class VoiceStateHandler:
             return None
 
         try:
-            return message_service.get_last_voice_state_in_recent(
+            return message_service.get_last_message_by_type(
                 chat_id=self.telegram_chat_id,
+                message_type="voice_state",
                 platform="telegram",
-                limit=5,
             )
         except Exception as e:
             logger.error(f"Error getting voice state message to edit: {e}")
@@ -156,7 +185,7 @@ class VoiceStateHandler:
                 self._update_message_in_db(message_id, text)
             return success
         except Exception as e:
-            logger.error(f"Error editing message: {e}")
+            logger.debug(f"Edit failed for message {message_id}: {e}")
             return False
 
     async def _send_new_message(self, text: str) -> None:

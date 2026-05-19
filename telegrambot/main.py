@@ -24,7 +24,7 @@ from telegrambot.handlers.commands import (
     search_image,
     search_image_callback,
 )
-from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter
+from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, delete_sticker
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -59,6 +59,7 @@ def main() -> None:
     application.add_handler(CommandHandler("resume", resume))
     application.add_handler(CommandHandler("image", search_image))
     application.add_handler(CommandHandler("sticker", sticker))
+    application.add_handler(CommandHandler("delsticker", delete_sticker))
     # /sticker com foto anexada (caption)
     application.add_handler(
         MessageHandler(sticker_photo_filter, sticker)

@@ -74,8 +74,9 @@ class LyricsError(Exception):
 
 def get_audio_source(url: str) -> Optional[discord.FFmpegOpusAudio]:
     try:
-        logger.info(f"Extracting audio info from URL: {url}")
+        logger.info(f"[get_audio_source] Extracting audio info from URL: {url}")
         info = ytdl.extract_info(url, download=False)
+        logger.info(f"[get_audio_source] extract_info returned, title={info.get('title') if info else None}")
 
         if "entries" in info:
             info = info["entries"][0]
@@ -94,13 +95,13 @@ def get_audio_source(url: str) -> Optional[discord.FFmpegOpusAudio]:
         if not audio_url:
             raise YTDLError("No audio URL found")
 
-        logger.info(f"Creating FFmpeg audio source from extracted URL")
+        logger.info(f"[get_audio_source] Creating FFmpeg audio source from extracted URL: {audio_url[:100]}...")
         source = discord.FFmpegOpusAudio(audio_url, **FFMPEG_OPTIONS)
 
-        logger.debug("Audio source created successfully")
+        logger.info(f"[get_audio_source] Audio source created successfully")
         return source
     except Exception as e:
-        logger.error(f"Error getting audio source from {url}: {type(e).__name__}: {e}")
+        logger.error(f"[get_audio_source] Error from {url}: {type(e).__name__}: {e}", exc_info=True)
         raise YTDLError(str(e))
 
 

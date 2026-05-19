@@ -96,6 +96,7 @@ class MusicPlayer:
             return False
 
     async def play_next(self) -> bool:
+        logger.info(f"[play_next] Called for guild {self.guild_id}, queue={len(self.queue)}, is_playing={self.is_playing}")
         try:
             if self.timeout_task and not self.timeout_task.done():
                 self.timeout_task.cancel()
@@ -146,7 +147,12 @@ class MusicPlayer:
             self.last_played = asyncio.get_event_loop().time()
 
             logger.info(f"Fetching audio source for: {self.current['title']}")
-            source = get_audio_source(self.current["url"])
+            try:
+                source = get_audio_source(self.current["url"])
+            except Exception as src_err:
+                logger.error(f"[play_next] get_audio_source FAILED for {self.current['title']}: {type(src_err).__name__}: {src_err}")
+                self.is_playing = False
+                return False
 
             if not source:
                 logger.error(f"Failed to get audio source for: {self.current['title']}")
@@ -156,6 +162,7 @@ class MusicPlayer:
             logger.info(
                 f"Starting playback of: {self.current['title']} in guild {self.guild_id}"
             )
+            logger.info(f"[play_next] Calling voice_client.play()...")
             self.voice_client.play(
                 source,
                 after=lambda e: asyncio.run_coroutine_threadsafe(
@@ -164,26 +171,27 @@ class MusicPlayer:
             )
 
             logger.info(
-                f"Now playing: {self.current['title']} in guild {self.guild_id}"
+                f"[play_next] Now playing: {self.current['title']} in guild {self.guild_id}"
             )
             return True
 
         except discord.errors.ConnectionClosed as e:
             logger.error(
-                f"Connection closed with code {e.code} while playing in guild {self.guild_id}"
+                f"[play_next] Connection closed with code {e.code} while playing in guild {self.guild_id}: {e}"
             )
             if e.code == 4017:
                 logger.warning(f"Voice mode error 4017, will attempt to reconnect")
             self.is_playing = False
             return False
         except Exception as e:
-            logger.error(f"Error playing next track: {e}")
+            logger.error(f"[play_next] Error playing next track: {type(e).__name__}: {e}", exc_info=True)
             self.is_playing = False
             return False
 
     async def _on_track_end(self, error):
+        logger.info(f"[_on_track_end] error={error}, queue={len(self.queue)}, is_playing={self.is_playing}")
         if error:
-            logger.error(f"Track ended with error: {error}")
+            logger.error(f"[_on_track_end] Track ended with error: {type(error).__name__}: {error}")
 
         await self.play_next()
 

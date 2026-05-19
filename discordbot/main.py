@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import logging
+import ctypes
 import sys
 from pathlib import Path
 from typing import Optional
@@ -8,8 +9,20 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
+import discord.opus
 from config import DISCORD_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from domain import init_database
+
+# Load Opus codec for voice connections
+if not discord.opus.is_loaded():
+    try:
+        _lib = ctypes.util.find_library('opus')
+        if _lib:
+            discord.opus.load_opus(_lib)
+        else:
+            print('WARNING: Opus library not found!')
+    except Exception as e:
+        print(f'WARNING: Failed to load Opus: {e}')
 from handlers import music_commands, VoiceStateHandler
 from shared import discord_channel_send_text_safe, send_telegram_message
 from telegram import Bot

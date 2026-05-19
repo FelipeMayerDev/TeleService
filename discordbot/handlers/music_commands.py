@@ -36,6 +36,26 @@ async def handle_play_command(message: discord.Message, args: str):
     voice_channel = message.author.voice.channel
     player = get_player(guild_id)
 
+    # Force disconnect any stale voice state before connecting
+    if player.voice_client and not player.voice_client.is_connected():
+        logger.warning(f"[play] Stale voice_client detected, cleaning up")
+        try:
+            await player.voice_client.disconnect(force=True)
+        except Exception as e:
+            logger.error(f"[play] Error disconnecting stale client: {e}")
+        player.voice_client = None
+
+    # Also disconnect via API to clear ghost state
+    if not player.voice_client or not player.voice_client.is_connected():
+        try:
+            me = message.guild.me
+            if me.voice and me.voice.channel:
+                logger.warning(f"[play] Bot appears to be in voice channel {me.voice.channel.name} but voice_client is None, disconnecting via API")
+                await me.move_to(None)
+                await asyncio.sleep(1)
+        except Exception as e:
+            logger.error(f"[play] Error clearing ghost voice state: {e}")
+
     if not args:
         await discord_reply_text_safe(
             message,
@@ -45,6 +65,7 @@ async def handle_play_command(message: discord.Message, args: str):
         return
 
     is_url = args.startswith("http://") or args.startswith("https://")
+    logger.info(f"[play] command from {message.author.name}, args='{args}', is_url={is_url}, voice_channel={voice_channel.name}")
 
     await discord_channel_send_text_safe(
         message.channel,
@@ -55,7 +76,9 @@ async def handle_play_command(message: discord.Message, args: str):
 
     try:
         if is_url:
+            logger.info(f"[play] Fetching song info from URL: {args}")
             song_info = get_song_info(args)
+            logger.info(f"[play] song_info={song_info}")
             if not song_info:
                 await discord_reply_text_safe(
                     message,
@@ -74,6 +97,7 @@ async def handle_play_command(message: discord.Message, args: str):
                 )
                 return
             songs = results
+            logger.info(f"[play] search returned {len(results)} results")
 
         if not songs:
             await discord_reply_text_safe(
@@ -84,6 +108,7 @@ async def handle_play_command(message: discord.Message, args: str):
             return
 
         added_count = player.add_multiple_to_queue(songs)
+        logger.info(f"[play] added {added_count} songs to queue, is_playing={player.is_playing}, is_paused={player.is_paused}")
 
         if added_count == 1:
             song = songs[0]
@@ -123,7 +148,7 @@ async def handle_play_command(message: discord.Message, args: str):
             player.set_player_message(msg)
 
     except Exception as e:
-        logger.error(f"Error in play command: {e}")
+        logger.error(f"[play] Error in play command: {type(e).__name__}: {e}", exc_info=True)
         await discord_reply_text_safe(
             message,
             f"Error playing music: {str(e)}",
