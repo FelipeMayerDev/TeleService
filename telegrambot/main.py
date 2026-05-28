@@ -19,11 +19,13 @@ from telegram.ext import (
 
 from domain import init_database
 from telegrambot.handlers.commands import (
+    delete,
     faq,
     online_agora,
     resume,
     search_image,
     search_image_callback,
+    tldr,
 )
 from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, sticker_media_filter, delete_sticker
 
@@ -56,8 +58,10 @@ def main() -> None:
     )
 
     # Commands
+    application.add_handler(CommandHandler("delete", delete))
     application.add_handler(CommandHandler("faq", faq))
     application.add_handler(CommandHandler("resume", resume))
+    application.add_handler(CommandHandler("tldr", tldr))
     application.add_handler(CommandHandler("image", search_image))
     application.add_handler(CommandHandler("online_agora", online_agora))
     application.add_handler(CommandHandler("sticker", sticker))

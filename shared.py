@@ -19,6 +19,26 @@ logger = logging.getLogger(__name__)
 message_service = MessageService()
 
 
+def _save_to_telegrambot_db(message_id: int, chat_id: int, text: str, message_type: str) -> None:
+    """Save a message to the telegrambot's shared DB for recency tracking."""
+    import sqlite3
+    from datetime import datetime
+    db_path = "/app/telegrambot/database.sqlite"
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO message (platform, platform_message_id, text, chat_id, from_user, to_user, reply_to_message_id, reply_text, message_type, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("telegram", message_id, text, chat_id, "System", None, None, None, message_type, datetime.now())
+        )
+        conn.commit()
+        conn.close()
+        logger.debug(f"Saved msg {message_id} to telegrambot DB")
+    except Exception as e:
+        logger.warning(f"Could not save to telegrambot DB: {e}")
+
+
 async def send_telegram_message(
     token: Optional[str] = None,
     chat_id: Optional[str] = None,
@@ -56,6 +76,7 @@ async def send_telegram_message(
                     reply_text=None,
                     message_type=message_type or "photo",
                 )
+                _save_to_telegrambot_db(message.message_id, int(chat_id), text or "[Photo]", message_type or "photo")
             return (message.message_id, int(chat_id))
         else:
             if not text:
@@ -74,6 +95,7 @@ async def send_telegram_message(
                     reply_text=None,
                     message_type=message_type or "text",
                 )
+                _save_to_telegrambot_db(message.message_id, int(chat_id), text, message_type or "text")
             return (message.message_id, int(chat_id))
     except Exception as e:
         logger.error(f"Error sending to Telegram: {e}")
@@ -109,6 +131,37 @@ async def edit_telegram_message(
         return True
     except Exception as e:
         logger.error(f"Error editing Telegram message: {e}")
+        return False
+
+
+async def is_telegram_message_recent(
+    chat_id: int,
+    message_id: int,
+    recent_limit: int = 5,
+) -> bool:
+    """Check if a voice_state message is among the last N messages in the Telegram chat.
+
+    Reads from the telegrambot's DB which has ALL messages (users + bot).
+    """
+    import sqlite3
+    db_path = "/app/telegrambot/database.sqlite"
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        # Get the last N message IDs from the telegrambot's DB
+        rows = cur.execute(
+            "SELECT platform_message_id FROM message "
+            "WHERE chat_id = ? AND platform = 'telegram' "
+            "ORDER BY created_at DESC LIMIT ?",
+            (chat_id, recent_limit)
+        ).fetchall()
+        conn.close()
+        recent_ids = [r[0] for r in rows]
+        found = message_id in recent_ids
+        logger.info(f"Recency check: msg {message_id} in last {recent_limit} IDs {recent_ids}: {found}")
+        return found
+    except Exception as e:
+        logger.warning(f"Could not check message recency via telegrambot DB: {e}")
         return False
 
 

@@ -19,16 +19,17 @@ services:
     env_file: .env
     volumes:
       - ./database.sqlite:/app/database.sqlite
-      - telegrambot-db:/app/telegrambot
+      - ./database.sqlite:/app/telegrambot/database.sqlite
       - ./telegrambot/handlers/sticker.py:/app/telegrambot/handlers/sticker.py:ro
       - ./telegrambot/main.py:/app/telegrambot/main.py:ro
+      - rembg-model:/root/.u2net
 
   walter-monitor:
     restart: unless-stopped
     image: python:3.11-slim
     env_file: .env
     volumes:
-      - telegrambot-db:/data:ro
+      - ./database.sqlite:/data/database.sqlite:ro
       - ./walter_monitor.py:/app/walter_monitor.py:ro
     entrypoint: ["python", "-u", "/app/walter_monitor.py"]
 
@@ -44,3 +45,4 @@ services:
 
 volumes:
   telegrambot-db:
+  rembg-model:

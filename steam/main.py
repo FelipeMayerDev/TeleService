@@ -31,6 +31,8 @@ playing_profiles = {}
 IMAGE_CACHE: dict[str, str] = {}
 
 
+
+
 def get_game_image(game: str, gameid: str | None) -> str | None:
     if game in IMAGE_CACHE:
         return IMAGE_CACHE[game]
@@ -138,15 +140,16 @@ async def get_playing_profiles(profiles: list[str]) -> dict:
         old_status = playing_profiles.get(profile, {}).get("is_playing", False)
         if old_status != is_playing and is_playing:
             image_url = get_game_image(game, gameid)
-
-            message = f"🎮 {profile} está jogando {game}"
+            message = _format_game_message(game, {profile})
+            edited = await _try_edit_last_steam(game, message, image_url)
+            if not edited:
+                await send_telegram_message(
+                    text=message,
+                    photo=image_url,
+                    save_to_db=True,
+                    message_type="steam_notification",
+                )
             print(message)
-            await send_telegram_message(
-                text=message,
-                photo=image_url,
-                save_to_db=True,
-                message_type="steam_notification",
-            )
 
         playing_profiles[profile] = {
             "is_playing": is_playing,
@@ -159,6 +162,99 @@ async def get_playing_profiles(profiles: list[str]) -> dict:
     await asyncio.sleep(check_interval)
 
     return playing_profiles
+
+
+def _format_game_message(game: str, profiles: set[str]) -> str:
+    if len(profiles) == 1:
+        return f"🎮 {next(iter(profiles))} está jogando {game}"
+    names = ", ".join(sorted(profiles)[:-1]) + " e " + sorted(profiles)[-1]
+    return f"🎮 {names} estão jogando {game}"
+
+
+async def _try_edit_last_steam(game: str, new_text: str, image_url: str | None) -> bool:
+    """Try to edit the last steam_notification message if it's for the same game."""
+    import os
+    from telegram import Bot
+    from domain.repositories.message_repository import MessageRepository
+    from database.main import init_database
+    from database.models import Message as MessageModel
+
+    init_database()
+    repo = MessageRepository()
+    chat_id = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+    if not chat_id:
+        return False
+
+    last = repo.get_last_message_by_type(
+        chat_id=chat_id,
+        message_type="steam_notification",
+        platform="telegram",
+    )
+    if not last:
+        return False
+
+    # Check if last notification was for the same game
+    last_text = last.text or ""
+    if game not in last_text:
+        return False
+
+    # Check if it's among the last 5 messages
+    recent = repo.get_last_messages(
+        chat_id=chat_id,
+        platform="telegram",
+        limit=5,
+    )
+    recent_ids = {m.platform_message_id for m in recent}
+    if last.platform_message_id not in recent_ids:
+        return False
+
+    # Extract current profiles from the message
+    # Add new profile to the list
+    current_profiles = _extract_profiles(last_text)
+    current_profiles.add(new_text.split("🎮 ", 1)[1].split(" estão jogando ")[0].split(" está jogando ")[0])
+    updated_text = _format_game_message(game, current_profiles)
+
+    # Try to edit caption
+    try:
+        bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+        await bot.edit_message_caption(
+            chat_id=chat_id,
+            message_id=last.platform_message_id,
+            caption=updated_text,
+        )
+        print(f"Edited steam notification: {updated_text}")
+        # Update DB
+        repo.update_message_text(last.platform_message_id, updated_text)
+        return True
+    except Exception as e:
+        print(f"Edit failed for steam notification: {e}")
+        # Remove stale reference
+        try:
+            repo.delete_by_platform_message_id(last.platform_message_id)
+        except Exception:
+            pass
+        return False
+
+
+def _extract_profiles(text: str) -> set[str]:
+    """Extract profile names from a steam notification message."""
+    if "🎮 " not in text:
+        return set()
+    content = text.split("🎮 ", 1)[1]
+    if " estão jogando " in content:
+        names_str = content.split(" estão jogando ")[0]
+    elif " está jogando " in content:
+        names_str = content.split(" está jogando ")[0]
+    else:
+        return set()
+
+    # Handle "X, Y e Z" format: split by ", " then split last item by " e "
+    names = [n.strip() for n in names_str.split(", ")]
+    if len(names) > 1 and " e " in names[-1]:
+        names = names[:-1] + names[-1].split(" e ")
+    elif " e " in names_str:
+        names = names_str.split(" e ")
+    return {n.strip() for n in names}
 
 
 async def main():

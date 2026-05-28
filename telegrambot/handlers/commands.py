@@ -1,10 +1,55 @@
+import logging
+
 from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from domain.services import MessageService
+from providers.groq import GroqProvider
 from providers.serp import SerpProvider
 from providers.zai import ZAIProvider
 from shared import reply_photo_safe, reply_text_safe
 from telegrambot.handlers.utils import is_valid_link, transcribe_audio
+
+logger = logging.getLogger(__name__)
+message_service = MessageService()
+
+
+async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    message = update.effective_message
+
+    if not user or (user.username or "").lower() != "fockytheguy":
+        return
+
+    replied_message = message.reply_to_message if message else None
+    if not replied_message:
+        await reply_text_safe(
+            message,
+            "Responda uma mensagem minha com /delete.",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    if not replied_message.from_user or replied_message.from_user.id != context.bot.id:
+        await reply_text_safe(
+            message,
+            "Só posso apagar mensagens que eu mesmo mandei.",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    try:
+        await replied_message.delete()
+    except Exception as e:
+        logger.error(f"Error deleting bot message: {e}")
+        await reply_text_safe(
+            message,
+            "Não consegui apagar essa mensagem.",
+            message_type="error",
+            save_to_db=False,
+        )
 
 
 async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -134,6 +179,90 @@ async def search_image_callback(update: Update, context) -> None:
     )
 
 
+async def tldr(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message = update.effective_message
+    if not message:
+        return
+
+    if not context.args:
+        await reply_text_safe(
+            message,
+            "Use /tldr <número> (máximo 300).",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    try:
+        limit = int(context.args[0])
+    except ValueError:
+        await reply_text_safe(
+            message,
+            "O número precisa ser válido. Exemplo: /tldr 50",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    if limit < 1:
+        await reply_text_safe(
+            message,
+            "O número precisa ser maior que zero.",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    limit = min(limit, 300)
+    status_message = await reply_text_safe(
+        message,
+        f"Resumindo as últimas {limit} mensagens...",
+        message_type="status",
+        save_to_db=False,
+    )
+
+    messages = message_service.get_last_messages(message.chat_id, limit=limit + 1)
+    messages = [m for m in messages if m.platform_message_id != message.message_id][:limit]
+
+    if not messages:
+        await status_message.edit_text("Não encontrei mensagens suficientes pra resumir.")
+        return
+
+    transcript_lines = []
+    for item in reversed(messages):
+        sender = item.from_user or "Unknown"
+        text = (item.text or "").strip()
+        if not text:
+            continue
+        transcript_lines.append(f"{sender}: {text}")
+
+    if not transcript_lines:
+        await status_message.edit_text("Não encontrei texto útil pra resumir.")
+        return
+
+    prompt = (
+        "Faça um resumo geral, em português brasileiro, do que foi falado "
+        "nestas mensagens de um grupo. Destaque os principais assuntos, decisões, "
+        "piadas/contextos recorrentes e qualquer pendência. Seja direto.\n\n"
+        + "\n".join(transcript_lines)
+    )
+
+    try:
+        summary = GroqProvider().chat(prompt).strip()
+    except Exception as e:
+        logger.error(f"Error generating TLDR with Groq: {e}", exc_info=True)
+        await status_message.edit_text("Não consegui gerar o resumo agora.")
+        return
+
+    if len(summary) > 4000:
+        summary = summary[:3997] + "..."
+
+    try:
+        await status_message.edit_text(summary, parse_mode="HTML")
+    except Exception:
+        await status_message.edit_text(summary)
+
+
 async def online_agora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Lista os usuários online no Discord com seus status."""
     import os
@@ -151,7 +280,7 @@ async def online_agora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    await reply_text_safe(
+    status_message = await reply_text_safe(
         update.message,
         "🔍 Buscando usuários online no Discord...",
         message_type="status",
@@ -222,8 +351,4 @@ async def online_agora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         online_text = f"❌ Erro ao conectar ao Discord: {str(e)}"
 
     if online_text:
-        await reply_text_safe(
-            update.message,
-            online_text,
-            message_type="online_status",
-        )
+        await status_message.edit_text(online_text)
