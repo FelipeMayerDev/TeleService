@@ -6,7 +6,7 @@ from typing import Optional, Set
 from telegram import Bot
 
 from domain import MessageService
-from shared import edit_telegram_message, send_telegram_message
+from shared import edit_telegram_message, send_telegram_message, is_telegram_message_recent
 
 message_service = MessageService()
 
@@ -15,21 +15,31 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class VoiceStateHandler:
-    cooldown: int = 5
+    cooldown: int = 2
     bot: Optional[Bot] = None
     telegram_chat_id: Optional[int] = None
     ignored_bot_names: Set[str] = field(default_factory=set)
 
     _pending_changes: dict = field(
-        default_factory=lambda: {"joined": set(), "left": set()}
+        default_factory=lambda: {
+            "joined": set(), "left": set(),
+            "muted": set(), "unmuted": set(),
+            "deafened": set(), "undeafened": set(),
+            "streaming": set(), "stopped_streaming": set(),
+        }
     )
     _timer_task: Optional[asyncio.Task] = None
     _voice_channel_before: Optional[object] = None
     _voice_channel_after: Optional[object] = None
+    _last_member = None
 
     async def handle_voice_state(self, member, before, after) -> None:
         if member.bot:
             return
+
+        self._last_member = member
+
+        logger.info(f"Voice state: {member.display_name} | ch_before={before.channel} ch_after={after.channel} | mute={before.self_mute}->{after.self_mute} deaf={before.self_deaf}->{after.self_deaf} stream={getattr(before,'self_stream',False)}->{getattr(after,'self_stream',False)}")
 
         if member.display_name in self.ignored_bot_names:
             logger.debug(f"Ignoring music bot: {member.display_name}")
@@ -47,6 +57,16 @@ class VoiceStateHandler:
         elif is_in_voice_before and not is_in_voice_after:
             self._pending_changes["left"].add(member.display_name)
             logger.debug(f"{member.display_name} left voice")
+        elif is_in_voice_after:
+            # Removidas notificações de mute/unmute/deaf/streaming por padrão
+            # Apenas mudanças de canal são notificadas
+            changed = False
+            if before.channel and after.channel and before.channel != after.channel:
+                # Usuário mudou de canal
+                logger.debug(f"{member.display_name} moved voice channel")
+                changed = True
+            if not changed:
+                return
         else:
             return
 
@@ -61,10 +81,21 @@ class VoiceStateHandler:
     async def _wait_and_notify(self) -> None:
         await asyncio.sleep(self.cooldown)
 
-        if not self._pending_changes["joined"] and not self._pending_changes["left"]:
+        # Cancel opposing actions per user
+        self._cancel_opposing("muted", "unmuted")
+        self._cancel_opposing("deafened", "undeafened")
+        self._cancel_opposing("streaming", "stopped_streaming")
+
+        if not any(self._pending_changes.values()):
             return
 
         await self._send_notification()
+
+    def _cancel_opposing(self, key_a: str, key_b: str) -> None:
+        """Remove users that appear in both opposing action sets."""
+        common = self._pending_changes[key_a] & self._pending_changes[key_b]
+        self._pending_changes[key_a] -= common
+        self._pending_changes[key_b] -= common
 
     async def _send_notification(self) -> None:
         text = self._format_message()
@@ -73,33 +104,53 @@ class VoiceStateHandler:
             self._clear_pending_changes()
             return
 
-        # Try to edit the last voice_state message (if recent enough)
-        last_msg = self._get_last_voice_state_message()
-
-        if last_msg:
-            message_id = last_msg.platform_message_id
-            edited = await self._edit_last_message(message_id, text)
-            if edited:
-                self._clear_pending_changes()
-                return
+        # Try to edit the last voice_state message (if within the last 5 messages)
+        last_voice_msg_id = self._get_last_voice_state_message_id()
+        if last_voice_msg_id:
+            is_recent = await is_telegram_message_recent(
+                chat_id=self.telegram_chat_id,
+                message_id=last_voice_msg_id,
+                recent_limit=5,
+            )
+            if is_recent:
+                edited = await self._edit_last_message(last_voice_msg_id, text)
+                if edited:
+                    self._clear_pending_changes()
+                    return
+                else:
+                    logger.info(f"Message {last_voice_msg_id} edit failed, sending new one")
+                    self._delete_message_from_db(last_voice_msg_id)
             else:
-                # Edit failed (message too old or deleted), remove from DB
-                logger.info(f"Message {message_id} too old or gone, sending new one")
-                self._delete_message_from_db(message_id)
+                logger.info(f"Message {last_voice_msg_id} not in recent 5, sending new one")
+
+        # For mute/unmute/deaf/stream without a voice channel, fetch it from guild
+        channel = self._voice_channel_after or self._voice_channel_before
+        if not channel:
+            try:
+                guild = self._last_member.guild if self._last_member else None
+                if guild:
+                    for vc in guild.voice_channels:
+                        if vc.members:
+                            channel = vc
+                            break
+                    self._voice_channel_after = channel
+            except Exception as e:
+                logger.debug(f"Could not find voice channel: {e}")
 
         await self._send_new_message(text)
         self._clear_pending_changes()
 
-    def _get_last_voice_state_message(self):
-        """Get the last voice_state message from DB."""
+    def _get_last_voice_state_message_id(self) -> Optional[int]:
+        """Get the last voice_state message ID from DB."""
         if self.telegram_chat_id is None:
             return None
         try:
-            return message_service.get_last_message_by_type(
+            last = message_service.get_last_message_by_type(
                 chat_id=self.telegram_chat_id,
                 message_type="voice_state",
                 platform="telegram",
             )
+            return last.platform_message_id if last else None
         except Exception as e:
             logger.error(f"Error getting voice state message: {e}")
             return None
@@ -128,6 +179,9 @@ class VoiceStateHandler:
             prefix = "saiu" if len(self._pending_changes["left"]) == 1 else "saíram"
             lines.append(f"{names} {prefix} do Discord")
 
+        # Notificações de mute/unmute/deaf/streaming foram removidas
+        # Use !online_agora para ver o status atual
+
         if lines:
             lines.append("")
 
@@ -152,9 +206,31 @@ class VoiceStateHandler:
                 continue
             if member.display_name in self.ignored_bot_names:
                 continue
-            online_users.add(member.display_name)
+
+            icon = self._get_voice_status_icon(member)
+            if icon:
+                online_users.add(f"{member.display_name} {icon}")
+            else:
+                online_users.add(member.display_name)
 
         return online_users
+
+    @staticmethod
+    def _get_voice_status_icon(member) -> str:
+        voice = member.voice
+        if not voice:
+            logger.info(f"No voice state for {member.display_name}")
+            return ""
+        logger.info(f"Icon check {member.display_name}: mute={voice.mute} self_mute={voice.self_mute} self_deaf={voice.self_deaf} self_stream={voice.self_stream}")
+        if voice.mute:
+            return "🔇"
+        if voice.self_stream:
+            return "🔴"
+        if voice.self_deaf:
+            return "🔇"
+        if voice.self_mute:
+            return "🎤"
+        return ""
 
     def _get_voice_state_message_id_to_edit(self) -> Optional[int]:
         if self.telegram_chat_id is None:
@@ -236,5 +312,5 @@ class VoiceStateHandler:
             logger.error(f"Error saving message to database: {e}")
 
     def _clear_pending_changes(self) -> None:
-        self._pending_changes["joined"].clear()
-        self._pending_changes["left"].clear()
+        for v in self._pending_changes.values():
+            v.clear()

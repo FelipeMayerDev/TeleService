@@ -24,6 +24,7 @@ if not discord.opus.is_loaded():
     except Exception as e:
         print(f'WARNING: Failed to load Opus: {e}')
 from handlers import music_commands, VoiceStateHandler
+from handlers.online_status import get_online_users_with_status
 from shared import discord_channel_send_text_safe, send_telegram_message
 from telegram import Bot
 
@@ -145,6 +146,12 @@ async def on_message(message):
         await music_commands.handle_remove_command(message, args)
     elif command == "move":
         await music_commands.handle_move_command(message, args)
+    elif command == "online_agora" or command == "online":
+        # Lista usuários online com status
+        status_text = get_online_users_with_status(message)
+        await discord_channel_send_text_safe(
+            message.channel, status_text, message_type="online_status"
+        )
 
 
 def main():
