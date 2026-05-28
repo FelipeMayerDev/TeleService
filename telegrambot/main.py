@@ -20,11 +20,12 @@ from telegram.ext import (
 from domain import init_database
 from telegrambot.handlers.commands import (
     faq,
+    online_agora,
     resume,
     search_image,
     search_image_callback,
 )
-from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, delete_sticker
+from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, sticker_media_filter, delete_sticker
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -58,11 +59,16 @@ def main() -> None:
     application.add_handler(CommandHandler("faq", faq))
     application.add_handler(CommandHandler("resume", resume))
     application.add_handler(CommandHandler("image", search_image))
+    application.add_handler(CommandHandler("online_agora", online_agora))
     application.add_handler(CommandHandler("sticker", sticker))
     application.add_handler(CommandHandler("delsticker", delete_sticker))
     # /sticker com foto anexada (caption)
     application.add_handler(
         MessageHandler(sticker_photo_filter, sticker)
+    )
+    # /sticker com GIF/video/document (caption)
+    application.add_handler(
+        MessageHandler(sticker_media_filter, sticker)
     )
     # Image search callback
     application.add_handler(

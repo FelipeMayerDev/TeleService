@@ -132,3 +132,98 @@ async def search_image_callback(update: Update, context) -> None:
         message_type="search_image",
         reply_markup=keyboard,
     )
+
+
+async def online_agora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Lista os usuários online no Discord com seus status."""
+    import os
+    import asyncio
+    import discord
+
+    DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+
+    if not DISCORD_TOKEN:
+        await reply_text_safe(
+            update.message,
+            "❌ DISCORD_TOKEN não configurado.",
+            message_type="error",
+            save_to_db=False,
+        )
+        return
+
+    await reply_text_safe(
+        update.message,
+        "🔍 Buscando usuários online no Discord...",
+        message_type="status",
+        save_to_db=False,
+    )
+
+    intents = discord.Intents.default()
+    intents.voice_states = True
+    intents.members = True
+
+    client = discord.Client(intents=intents)
+
+    online_text = None
+
+    @client.event
+    async def on_ready():
+        nonlocal online_text
+        logger.info(f"Connected to Discord as {client.user}")
+
+        # Encontrar o canal de voz com membros
+        voice_channel = None
+        for guild in client.guilds:
+            for vc in guild.voice_channels:
+                if vc.members:
+                    voice_channel = vc
+                    break
+            if voice_channel:
+                break
+
+        if not voice_channel:
+            online_text = "❌ Não há ninguém online nos canais de voz do Discord."
+        else:
+            lines = [f"📢 **Canal: {voice_channel.name}**\n"]
+            lines.append("Usuários online:\n")
+
+            for member in sorted(voice_channel.members, key=lambda m: m.display_name.lower()):
+                if member.bot:
+                    continue
+
+                voice = member.voice
+                if not voice:
+                    continue
+
+                status_icon = ""
+                if voice.self_stream:
+                    status_icon = "🔴"  # Streaming
+                elif voice.self_deaf:
+                    status_icon = "🔇"  # Deafened
+                elif voice.self_mute:
+                    status_icon = "🎤"  # Muted
+
+                status_text = f" {status_icon}" if status_icon else ""
+                lines.append(f"- {member.display_name}{status_text}")
+
+            online_text = "".join(lines)
+
+        await client.close()
+
+    try:
+        await asyncio.wait_for(client.start(DISCORD_TOKEN), timeout=10)
+        await asyncio.sleep(2)  # Dar tempo para o on_ready executar
+        await client.close()
+    except asyncio.TimeoutError:
+        await client.close()
+        online_text = "⏱️ Timeout ao conectar ao Discord."
+    except Exception as e:
+        logger.error(f"Error connecting to Discord: {e}")
+        online_text = f"❌ Erro ao conectar ao Discord: {str(e)}"
+
+    if online_text:
+        await reply_text_safe(
+            update.message,
+            online_text,
+            message_type="online_status",
+        )
