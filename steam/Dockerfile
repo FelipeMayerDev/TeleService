@@ -20,4 +20,4 @@ WORKDIR /app/steam
 
 COPY steam/ ./
 
-CMD ["python", "main.py"]
+CMD ["python", "-u", "main.py"]
