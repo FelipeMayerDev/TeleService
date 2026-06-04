@@ -1,4 +1,5 @@
 import logging
+import random
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from domain import MessageService
 logger = logging.getLogger(__name__)
 
 WALTER_USERNAME = "Wdiegon"
+WALTER_CHANCE = 0.05
 CONTRADICTION_SYSTEM_PROMPT = (
     "Você é o FakeGrok, um bot de Telegram irritado e mal-humorado. Fala português. "
     "Breve. Máximo 2-3 frases. Nunca escreva parágrafos. "
@@ -122,7 +124,7 @@ async def text_handler(update: Update, context: CallbackContext):
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
                 await reply_text_safe(message, ia_response, message_type="ai_response")
 
-    elif message.text and _is_walter(message):
+    elif message.text and _is_walter(message) and random.random() < WALTER_CHANCE:
         await _handle_contradiction(message)
 
 async def _handle_contradiction(message):
