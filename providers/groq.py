@@ -1,6 +1,10 @@
+import logging
+
 from .factory import AiFactory
 from .config import GROQ_API_KEY
 from groq import Groq
+
+logger = logging.getLogger(__name__)
 
 
 class GroqProvider(AiFactory):
@@ -10,23 +14,24 @@ class GroqProvider(AiFactory):
 
     def chat(self, prompt):
         system = "Você é uma IA em um grupo de amigos que responde perguntas de forma clara e concisa. Responda na linguagem que for perguntado e em html"
-        completion = self.client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "system",
-                    "content": f"{system}"
-                },
-                {
-                    "role": "user",
-                    "content": f"{prompt}"
-                }
-            ],
-            temperature=1,
-            top_p=1,
-            stream=False,
-        )
-        return completion.choices[0].message.content
+        return self.chat_with_system(system, prompt)
+
+    def chat_with_system(self, system_prompt, prompt):
+        try:
+            completion = self.client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=1,
+                top_p=1,
+                stream=False,
+            )
+            return completion.choices[0].message.content
+        except Exception as e:
+            logger.error(f"Groq API error: {e}")
+            return None
 
     def transcribe_audio(self, filename):
         try:

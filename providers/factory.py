@@ -29,9 +29,6 @@ class RateLimiter:
             self.timestamps.append(now)
 
 
-_rate_limiter = RateLimiter(max_calls=2, time_window=60)
-
-
 class AiFactory(ABC):
     def transcribe_audio(self, audio_file) -> str:
         pass
@@ -40,8 +37,7 @@ class AiFactory(ABC):
         pass
 
     def chat(self, message) -> str:
-        _rate_limiter.check()
-        return self.chat(message)
+        raise NotImplementedError
 
     def vision(self, image) -> str:
         pass

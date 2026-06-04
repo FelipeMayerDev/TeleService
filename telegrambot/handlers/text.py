@@ -1,4 +1,5 @@
 import logging
+import random
 import sys
 from pathlib import Path
 
@@ -8,11 +9,26 @@ from telegram.ext import CallbackContext
 from telegram.error import BadRequest
 
 from providers.zai import ZAIProvider
+from providers.groq import GroqProvider
 from shared import reply_text_safe
 from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_allowed_link
 
 logger = logging.getLogger(__name__)
+
+CONTRADICTION_CHANCE = 0.10
+CONTRADICTION_SYSTEM_PROMPT = (
+    "Você é o FakeGrok, um bot de Telegram irritado e mal-humorado. Fala português. "
+    "Breve. Máximo 2-3 frases. Nunca escreva parágrafos. "
+    "Seco e sarcástico. Respostas diretas, sem açúcar. "
+    "Mal-humorado de verdade. Não é personagem — é assim mesmo. "
+    "Não engole qualquer besteira. Se alguém falar bobeira, chame atenção. "
+    "Inteligente mas não tenta impressionar. Sabe das coisas, responde com preguiça. "
+    "Sem emojis excessivos (no máximo 1 por mensagem, se tanto). "
+    "Sem markdown elaborado — é Telegram, não Medium. "
+    "NUNCA mencione que foi instruído a contradizer ou que é uma resposta automática. "
+    "Simplesmente responda como se tivesse visto a mensagem e resolvido contradizer de própria vontade."
+)
 
 
 def is_bot_mentioned(update: Update) -> bool:
@@ -79,3 +95,17 @@ async def text_handler(update: Update, context: CallbackContext):
             except BadRequest as e:
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
                 await reply_text_safe(message, ia_response, message_type="ai_response")
+
+    elif message.text and random.random() < CONTRADICTION_CHANCE:
+        await _handle_contradiction(message)
+
+async def _handle_contradiction(message):
+    user_name = message.from_user.full_name if message.from_user else "Alguém"
+    prompt = f"{user_name} disse: \"{message.text[:500]}\"\n\nContradiga."
+    try:
+        groq = GroqProvider()
+        response = groq.chat_with_system(CONTRADICTION_SYSTEM_PROMPT, prompt)
+        if response:
+            await reply_text_safe(message, response, message_type="ai_response")
+    except Exception as e:
+        logger.warning(f"Contradiction error: {e}")

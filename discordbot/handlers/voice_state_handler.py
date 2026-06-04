@@ -6,7 +6,7 @@ from typing import Optional, Set
 from telegram import Bot
 
 from domain import MessageService
-from shared import edit_telegram_message, send_telegram_message, is_telegram_message_recent
+from shared import delete_telegram_message, edit_telegram_message, send_telegram_message, is_telegram_message_recent
 
 message_service = MessageService()
 
@@ -104,7 +104,7 @@ class VoiceStateHandler:
             self._clear_pending_changes()
             return
 
-        # Try to edit the last voice_state message (if within the last 5 messages)
+        # Delete the old voice_state message so the new one triggers a push notification
         last_voice_msg_id = self._get_last_voice_state_message_id()
         if last_voice_msg_id:
             is_recent = await is_telegram_message_recent(
@@ -113,15 +113,11 @@ class VoiceStateHandler:
                 recent_limit=5,
             )
             if is_recent:
-                edited = await self._edit_last_message(last_voice_msg_id, text)
-                if edited:
-                    self._clear_pending_changes()
-                    return
-                else:
-                    logger.info(f"Message {last_voice_msg_id} edit failed, sending new one")
-                    self._delete_message_from_db(last_voice_msg_id)
+                logger.info(f"Deleting old message {last_voice_msg_id} before sending new one")
+                await self._delete_last_message(last_voice_msg_id)
             else:
-                logger.info(f"Message {last_voice_msg_id} not in recent 5, sending new one")
+                logger.info(f"Message {last_voice_msg_id} not in recent 5, deleting from DB only")
+                self._delete_message_from_db(last_voice_msg_id)
 
         # For mute/unmute/deaf/stream without a voice channel, fetch it from guild
         channel = self._voice_channel_after or self._voice_channel_before
@@ -245,6 +241,16 @@ class VoiceStateHandler:
         except Exception as e:
             logger.error(f"Error getting voice state message to edit: {e}")
             return None
+
+    async def _delete_last_message(self, message_id: int) -> None:
+        if self.bot is None or self.telegram_chat_id is None:
+            return
+        await delete_telegram_message(
+            token=self.bot.token,
+            chat_id=str(self.telegram_chat_id),
+            message_id=message_id,
+        )
+        self._delete_message_from_db(message_id)
 
     async def _edit_last_message(self, message_id: int, text: str) -> bool:
         if self.bot is None or self.telegram_chat_id is None:

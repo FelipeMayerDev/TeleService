@@ -102,6 +102,31 @@ async def send_telegram_message(
         return None
 
 
+async def delete_telegram_message(
+    token: Optional[str] = None,
+    chat_id: Optional[str] = None,
+    message_id: Optional[int] = None,
+) -> bool:
+    if token is None:
+        token = os.getenv("TELEGRAM_TOKEN")
+    if chat_id is None:
+        chat_id = os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id or message_id is None:
+        logger.warning("token, chat_id or message_id not provided for delete")
+        return False
+
+    bot = Bot(token=token)
+
+    try:
+        await bot.delete_message(chat_id=int(chat_id), message_id=int(message_id))
+        logger.info(f"Deleted Telegram message {message_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"Error deleting Telegram message {message_id}: {e}")
+        return False
+
+
 async def edit_telegram_message(
     token: Optional[str] = None,
     chat_id: Optional[str] = None,

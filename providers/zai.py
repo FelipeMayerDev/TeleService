@@ -5,6 +5,7 @@ from zai.core._errors import APIReachLimitError
 
 from .config import ZAI_API_KEY
 from .factory import AiFactory
+from .groq import GroqProvider
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +15,7 @@ class ZAIProvider(AiFactory):
         self.client = ZaiClient(
             base_url="https://api.z.ai/api/coding/paas/v4", api_key=ZAI_API_KEY
         )
+        self._groq = GroqProvider()
 
     def vision(self, image) -> str:
         raise NotImplementedError("vision not implemented yet")
@@ -42,7 +44,8 @@ class ZAIProvider(AiFactory):
                 if attempt < len(retry_delays):
                     time.sleep(delay)
                 else:
-                    return "IA com rate limit baixo"
+                    logger.info("ZAI exhausted, falling back to Groq")
+                    return self._groq.chat(message)
             except Exception as e:
                 logger.error(
                     f"ZAI error (attempt {attempt}/{len(retry_delays)}): {e}",
@@ -51,6 +54,8 @@ class ZAIProvider(AiFactory):
                 if attempt < len(retry_delays):
                     time.sleep(delay)
                 else:
-                    return "IA com rate limit baixo"
+                    logger.info("ZAI exhausted, falling back to Groq")
+                    return self._groq.chat(message)
 
-        return "IA com rate limit baixo"
+        logger.info("ZAI exhausted, falling back to Groq")
+        return self._groq.chat(message)

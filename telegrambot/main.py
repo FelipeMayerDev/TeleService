@@ -28,6 +28,7 @@ from telegrambot.handlers.commands import (
     tldr,
 )
 from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, sticker_media_filter, delete_sticker
+from telegrambot.handlers.errors import error_handler
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -45,6 +46,7 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 def main() -> None:
     """Start the bot."""
     application = Application.builder().token(TELEGRAM_TOKEN).build()
+    application.add_error_handler(error_handler)
 
     # Catch-all - save ALL messages to database
     application.add_handler(
