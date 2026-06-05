@@ -124,8 +124,9 @@ async def text_handler(update: Update, context: CallbackContext):
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
                 await reply_text_safe(message, ia_response, message_type="ai_response")
 
-    elif message.text and _is_walter(message) and random.random() < WALTER_CHANCE:
-        await _handle_contradiction(message)
+    # DESATIVADO TEMPORARIAMENTE - walter_monitor
+    # elif message.text and _is_walter(message) and random.random() < WALTER_CHANCE:
+    #     await _handle_contradiction(message)
 
 async def _handle_contradiction(message):
     chat_id = message.chat_id
