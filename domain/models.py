@@ -48,6 +48,19 @@ class Message(BaseModel):
         table_name = "message"
 
 
+class SteamProfileState(BaseModel):
+    """Rastreia o estado dos perfis Steam monitorados."""
+    profile = TextField(index=True, unique=True)
+    is_playing = BooleanField(default=False)
+    game = TextField(null=True)
+    game_id = IntegerField(null=True)
+    last_notified_at = DateTimeField(default=datetime.now)
+    updated_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "steam_profile_state"
+
+
 def init_database():
     with db:
         if not Feature.table_exists():
@@ -68,3 +81,6 @@ def init_database():
                 db.execute_sql(
                     "ALTER TABLE message RENAME COLUMN telegram_message_id TO platform_message_id"
                 )
+
+        if not SteamProfileState.table_exists():
+            SteamProfileState.create_table()

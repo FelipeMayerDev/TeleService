@@ -1,5 +1,4 @@
 import logging
-import random
 import sys
 from pathlib import Path
 
@@ -9,7 +8,6 @@ from telegram.ext import CallbackContext
 from telegram.error import BadRequest
 
 from providers.zai import ZAIProvider
-from providers.groq import GroqProvider
 from shared import reply_text_safe
 from telegrambot.handlers.media import get_media
 from telegrambot.handlers.utils import is_allowed_link
@@ -17,20 +15,7 @@ from domain import MessageService
 
 logger = logging.getLogger(__name__)
 
-WALTER_USERNAME = "Wdiegon"
-WALTER_CHANCE = 0.05
-CONTRADICTION_SYSTEM_PROMPT = (
-    "Você é o FakeGrok, um bot de Telegram irritado e mal-humorado. Fala português. "
-    "Breve. Máximo 2-3 frases. Nunca escreva parágrafos. "
-    "Seco e sarcástico. Respostas diretas, sem açúcar. "
-    "Mal-humorado de verdade. Não é personagem — é assim mesmo. "
-    "Não engole qualquer besteira. Se alguém falar bobeira, chame atenção. "
-    "Inteligente mas não tenta impressionar. Sabe das coisas, responde com preguiça. "
-    "Sem emojis excessivos (no máximo 1 por mensagem, se tanto). "
-    "Sem markdown elaborado — é Telegram, não Medium. "
-    "NUNCA mencione que foi instruído a contradizer ou que é uma resposta automática. "
-    "Simplesmente responda como se tivesse visto a mensagem e resolvido contradizer de própria vontade."
-)
+
 
 message_service = MessageService()
 
@@ -52,30 +37,6 @@ def is_bot_mentioned(update: Update) -> bool:
                 if mention_text == "@fimosin_bot":
                     return True
     return False
-
-
-def _is_walter(message) -> bool:
-    if not message.from_user:
-        return False
-    username = message.from_user.username
-    return bool(username and username.lower() == WALTER_USERNAME.lower())
-
-
-def _build_conversation_context(chat_id: int, limit: int = 15) -> str:
-    messages = message_service.get_last_messages(
-        chat_id=chat_id,
-        limit=limit,
-    )
-    messages.reverse()
-    lines = []
-    for msg in messages:
-        if msg.message_type == "ai_response":
-            sender = "FakeGrok"
-        else:
-            sender = msg.from_user or "Alguém"
-        text = msg.text[:200] if msg.text else ""
-        lines.append(f"{sender}: {text}")
-    return "\n".join(lines)
 
 
 async def text_handler(update: Update, context: CallbackContext):
@@ -123,20 +84,3 @@ async def text_handler(update: Update, context: CallbackContext):
             except BadRequest as e:
                 logger.warning(f"Markdown parse error, sending without formatting: {e}")
                 await reply_text_safe(message, ia_response, message_type="ai_response")
-
-    # DESATIVADO TEMPORARIAMENTE - walter_monitor
-    # elif message.text and _is_walter(message) and random.random() < WALTER_CHANCE:
-    #     await _handle_contradiction(message)
-
-async def _handle_contradiction(message):
-    chat_id = message.chat_id
-    user_name = message.from_user.full_name if message.from_user else "Alguém"
-    context_history = _build_conversation_context(chat_id)
-    prompt = f"Histórico da conversa:\n{context_history}\n\nContradiga a última mensagem de {user_name}."
-    try:
-        groq = GroqProvider()
-        response = groq.chat_with_system(CONTRADICTION_SYSTEM_PROMPT, prompt)
-        if response:
-            await reply_text_safe(message, response, message_type="ai_response")
-    except Exception as e:
-        logger.warning(f"Contradiction error: {e}")

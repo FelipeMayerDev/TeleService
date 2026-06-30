@@ -23,6 +23,7 @@ services:
       - ./database.sqlite:/app/telegrambot/database.sqlite
       - ./telegrambot/handlers/sticker.py:/app/telegrambot/handlers/sticker.py:ro
       - ./telegrambot/main.py:/app/telegrambot/main.py:ro
+      - ./instagram-cookies.txt:/app/instagram-cookies.txt
       - rembg-model:/root/.u2net
 
   steam:
@@ -35,6 +36,7 @@ services:
     volumes:
       - ./database.sqlite:/app/database.sqlite
       - ./database.sqlite:/app/telegrambot/database.sqlite
+      - ./steam/steam-cookie.txt:/app/steam/steam-cookie.txt:ro
 
 volumes:
   telegrambot-db:

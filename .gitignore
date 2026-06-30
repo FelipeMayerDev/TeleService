@@ -43,3 +43,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Instagram cookies (sensitive)
+instagram-cookies.txt

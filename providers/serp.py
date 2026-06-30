@@ -43,14 +43,15 @@ class SerpProvider:
             pass
 
     @staticmethod
-    def search_image(image, limit=15, max_retries=3):
+    def search_image(image, limit=15, max_retries=3, use_cache=False):
         SerpProvider._load_cache()
 
         # Check cache
-        cached = SerpProvider._cache.get(image)
-        if cached:
-            print(f"Image cache HIT for: {image}")
-            return cached["url"]
+        if use_cache:
+            cached = SerpProvider._cache.get(image)
+            if cached:
+                print(f"Image cache HIT for: {image}")
+                return cached["url"]
 
         for attempt in range(max_retries):
             try:
@@ -67,10 +68,11 @@ class SerpProvider:
                 if images_results:
                     random_number = randint(0, len(images_results) - 1)
                     url = images_results[random_number]["original"]
-                    # Save to cache
-                    SerpProvider._cache[image] = {"url": url, "ts": time.time()}
-                    SerpProvider._save_cache()
-                    print(f"Image cache MISS for: {image} (saved to cache)")
+                    # Save to cache if enabled
+                    if use_cache:
+                        SerpProvider._cache[image] = {"url": url, "ts": time.time()}
+                        SerpProvider._save_cache()
+                        print(f"Image cache MISS for: {image} (saved to cache)")
                     return url
             except Exception:
                 if attempt == max_retries - 1:

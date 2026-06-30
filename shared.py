@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 
 from dotenv import load_dotenv
 from telegram import Bot, Message
+from telegram.error import TimedOut
 from telegram.ext import ContextTypes
 from telegram.helpers import escape_markdown
 
@@ -286,10 +287,16 @@ async def reply_video_safe(
     message_type: str = "video",
     save_to_db: bool = True,
     thumbnail=None,
-) -> Message:
-    reply_msg = await message.reply_video(
-        video, caption=caption, parse_mode=parse_mode, thumbnail=thumbnail
-    )
+) -> Optional[Message]:
+    try:
+        reply_msg = await message.reply_video(
+            video, caption=caption, parse_mode=parse_mode, thumbnail=thumbnail
+        )
+    except TimedOut:
+        # ponytail: TimedOut on media upload almost always means the file
+        # was delivered but we didn't get the HTTP confirmation in time.
+        logger.warning("reply_video timed out — upload likely succeeded")
+        return None
 
     if save_to_db and reply_msg:
         from_user = None

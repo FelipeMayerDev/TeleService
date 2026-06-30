@@ -1,4 +1,4 @@
-import re, os
+import re, os, glob, io
 from typing import Optional, Tuple
 import yt_dlp
 from faster_whisper import WhisperModel
@@ -7,6 +7,26 @@ from providers.groq import GroqProvider
 from telegrambot.handlers.kinds import Origin
 
 from .errors import VideoNotFound
+
+
+# Instagram cookies para autenticação
+INSTAGRAM_COOKIES_PATH = "/app/instagram-cookies.txt"
+YDL_OPTS_BASE = {
+    "quiet": True,
+    "no_warnings": True,
+    "no_save_cookies": True,
+    "no_cache_dir": True,
+}
+
+
+def get_ydl_opts(extra_opts=None):
+    """Retorna configurações do yt-dlp com cookies se disponíveis."""
+    opts = YDL_OPTS_BASE.copy()
+    if os.path.exists(INSTAGRAM_COOKIES_PATH):
+        opts["cookiefile"] = INSTAGRAM_COOKIES_PATH
+    if extra_opts:
+        opts.update(extra_opts)
+    return opts
 
 
 def clean_subtitle_text(raw):
@@ -35,11 +55,9 @@ def clean_subtitle_text(raw):
 
 def is_valid_link(link) -> bool:
     try:
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
+        ydl_opts = get_ydl_opts({
             "skip_download": True,
-        }
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
             if info is None:
@@ -61,7 +79,7 @@ def is_link(text: str) -> bool:
 def is_allowed_link(text: str):
     if not is_link(text):
         return False
-    allowed_links = ["youtube.com/shorts/", "instagram.com/reel/", "instagram.com/p/", "facebook.com/reel/", "bsky", "/status/"]
+    allowed_links = ["youtube.com/shorts/", "instagram.com/reel/", "instagram.com/reels/", "instagram.com/p/", "facebook.com/reel/", "bsky", "/status/"]
     if not any(link for link in allowed_links if link in text):
         return False
     return True
@@ -70,7 +88,7 @@ def is_allowed_link(text: str):
 def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
     """Downloads audio and transcribes it with faster-whisper."""
     audio_path = os.path.join(tmpdir, "audio.%(ext)s")
-    ydl_opts = {
+    ydl_opts = get_ydl_opts({
         "format": "bestaudio/best",
         "outtmpl": audio_path,
         "postprocessors": [
@@ -80,9 +98,7 @@ def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
                 "preferredquality": "192",
             }
         ],
-        "quiet": True,
-        "no_warnings": True,
-    }
+    })
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         _info = ydl.extract_info(url)
@@ -111,21 +127,34 @@ def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
 
 
 def get_media_from_link(link) -> Optional[Tuple[any, any]]:
+    """Baixa mídia do link e retorna (buffer_video, titulo, thumbnail_url)."""
     try:
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
+        ydl_opts = get_ydl_opts({
             "format": "best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best",
             "postprocessor_args": ["-movflags", "+faststart"],
-            "download": False,
-            "skip_download": True,
-            "outtmpl": "/dev/null",
+            "outtmpl": "/tmp/video.%(ext)s",
             "cachedir": False,
-        }
+            "socket_timeout": 30,
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link)
-            if not info.get("url") and not info.get("formats"):
-                raise VideoNotFound("Video not found")
+            info = ydl.extract_info(link, download=True)
+
+        # Ler o arquivo baixado para memória
+        video_path = "/tmp/video.mp4"
+        if not os.path.exists(video_path):
+            # Tenta encontrar o arquivo com outro formato
+            import glob
+            video_files = glob.glob("/tmp/video.*")
+            if video_files:
+                video_path = video_files[0]
+            else:
+                raise VideoNotFound("Video download failed")
+
+        with open(video_path, "rb") as f:
+            video_buffer = io.BytesIO(f.read())
+
+        # Limpa o arquivo temporário
+        os.remove(video_path)
 
         thumbnail = info.get("thumbnail")
         if not thumbnail and info.get("thumbnails"):
@@ -136,17 +165,7 @@ def get_media_from_link(link) -> Optional[Tuple[any, any]]:
                     thumbnail = fmt["thumbnails"][0].get("url")
                     break
 
-        video_data = {
-            "url": info.get("url"),
-            "title": info.get("title"),
-            "thumbnail": thumbnail,
-        }
-        # sender = message.from_user.username or message.from_user.id
-        # caption = f"***{video_data['title']}***\n\nLink: {message.text}\nEnviado por: {sender}"
-        # await message.reply_video(
-        #     video=video_data["url"], caption=caption, parse_mode="Markdown"
-        # )
-        return (video_data["url"], video_data["title"], video_data["thumbnail"])
+        return (video_buffer, info.get("title"), thumbnail)
     except Exception as e:
         print(f"Error: {e}")
         raise e

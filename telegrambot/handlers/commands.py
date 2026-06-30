@@ -2,6 +2,8 @@ import logging
 
 from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+import requests
+from bs4 import BeautifulSoup
 
 from domain.services import MessageService
 from providers.groq import GroqProvider
@@ -12,6 +14,41 @@ from telegrambot.handlers.utils import is_valid_link, transcribe_audio
 
 logger = logging.getLogger(__name__)
 message_service = MessageService()
+
+
+def get_text_content(url: str) -> tuple[str, str] | None:
+    """Baixa o conteúdo de texto de um site e retorna (texto, título)."""
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Tenta pegar o título
+        title = soup.find('title')
+        title = title.get_text().strip() if title else url
+
+        # Remove scripts e estilos
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+            element.decompose()
+
+        # Pega o texto principal
+        text = soup.get_text(separator=' ', strip=True)
+
+        # Limpa o texto
+        text = ' '.join(text.split())
+
+        if len(text) < 100:
+            return None
+
+        return (text, title)
+
+    except Exception as e:
+        logger.error(f"Error getting text content: {e}")
+        return None
 
 
 async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -55,15 +92,41 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await reply_text_safe(
         update.message,
-        """📚 *FAQ*
+        """📚 *Comandos do TeleService*
 
-🐌 *Pooling da Steam pela API é lento*
-• Pode ler na documentação oficial
-• Não possui webhook (não é de graça)
+📥 *Mídia:*
+• Envie links de vídeo/áudio e eu baixo automaticamente
+• Suporta: YouTube, Instagram (reels/reel), TikTok, Twitter/X, Facebook, etc.
+• Aceita links normais, fóruns, artigos, tweets...
 
-❓ *Bot não pegou o link da sua mídia?*
-• Geralmente é restrição de idade
-• Solução: Envie seu cookie pro Focky""",
+📝 *Resumo:*
+• `/resume <link>` - Resuma qualquer conteúdo (vídeo, áudio, artigo, tweet)
+  - Baixa e transcreve vídeos/áudios
+  - Extrai texto de artigos/blogs
+  - Máximo 15 minutos para mídia
+• `/tldr <número>` - Resuma as últimas N mensagens (máx 300)
+
+🔍 *Busca:*
+• `/image <termo>` - Busca imagens no Google
+
+👥 *Discord:*
+• `/online_agora` - Lista usuários online nos canais de voz
+
+🎨 *Stickers:*
+• `/sticker` - Cria sticker de foto/GIF/video (envie com a mídia)
+
+⚙️ *Admin (só @fockytheguy):*
+• `/delete` - Apaga mensagem do bot
+• `/delsticker` - Deleta sticker do pack
+• `/falar <msg>` - Manda mensagem no chat principal
+
+🐌 *Notas:*
+• Pooling da Steam pela API é lento (ver doc oficial)
+• Vídeos com restrição de idade podem não funcionar
+
+❓ *Erro ao baixar mídia?*
+• Geralmente é restrição de idade ou link expirado
+• Procure o @fockytheguy para ajuste""",
         parse_mode="markdown",
         message_type="faq",
     )
@@ -72,35 +135,51 @@ async def faq(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     link = update.message.text.split(" ", 1)[1]
-    if not is_valid_link(link):
-        return await reply_text_safe(
-            update.message,
-            "Video inválido.. lembrando que o limite é de 15 minutos!",
-            message_type="error",
-            save_to_db=False,
-        )
+
     message = await reply_text_safe(
         update.message,
-        "Iniciando resumo.. isso pode demorar...",
+        "Analisando link e extraindo conteúdo...",
         message_type="status",
         save_to_db=False,
     )
-    content = transcribe_audio(link, "base", "")
 
+    # Tenta primeiro como vídeo/áudio
+    is_media = False
+    try:
+        if is_valid_link(link):
+            is_media = True
+            content = transcribe_audio(link, "base", "")
+        else:
+            content = None
+    except Exception:
+        content = None
+
+    # Se não for mídia ou falhou, tenta baixar texto
     if not content or not content[0]:
-        await message.edit_text(
-            "Não foi possível obter legendas para este vídeo.",
-            reply_markup=ForceReply(selective=True),
-        )
-        return
+        text_content = get_text_content(link)
+        if text_content:
+            text, title = text_content
+            content = (text, title, "Texto")
+            is_media = False
+        else:
+            await message.edit_text(
+                "Não foi possível obter conteúdo deste link (vídeo, áudio ou texto).",
+            )
+            return
 
     resume = ZAIProvider().chat(
-        f"<system_prompt>Resuma esse conteúdo de um vídeo do youtube em no máximo 150 palavras, não use emojis, responda sempre em português pt-br</system_prompt><input>title: {content[1]}\ncontent: {content[0]}</input>"
+        f"<system_prompt>Resuma esse conteúdo em no máximo 150 palavras, não use emojis, responda sempre em português pt-br</system_prompt><input>title: {content[1]}\ncontent: {content[0]}</input>"
     )
-    final_text = f"""{user.mention_markdown()} segue o seu resumo do video *{content[1]}* :
+
+    if is_media:
+        source_text = f"Transcrição de {content[2]}"
+    else:
+        source_text = "Texto do site"
+
+    final_text = f"""{user.mention_markdown()} segue o seu resumo de *{content[1]}* :
         -_{resume}_
 
-        - Transcrito pelo *{content[2].value}*
+        - Fonte: *{source_text}*
         """
     await message.edit_text(final_text, parse_mode="markdown")
 
@@ -122,7 +201,7 @@ async def search_image(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         message_type="status",
         save_to_db=False,
     )
-    image = SerpProvider().search_image(query)
+    image = SerpProvider().search_image(query, use_cache=False)
     if not image:
         await message.edit_text(
             f"Não foi possível encontrar imagens para '{query}'. Tente novamente com outro termo."
@@ -152,7 +231,7 @@ async def search_image_callback(update: Update, context) -> None:
     query = update.callback_query.data.split(":", 1)[1]
     user = update.effective_user
     await update.callback_query.answer("Buscando outra imagem...")
-    image = SerpProvider().search_image(query)
+    image = SerpProvider().search_image(query, use_cache=False)
     if not image:
         await reply_text_safe(
             update.callback_query.message,
@@ -352,3 +431,44 @@ async def online_agora(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     if online_text:
         await status_message.edit_text(online_text)
+
+
+async def falar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Manda uma mensagem no chat principal. Apenas @fockytheguy pode usar."""
+    import os
+    from telegram import Bot
+
+    user = update.effective_user
+    message = update.effective_message
+
+    if not user or (user.username or "").lower() != "fockytheguy":
+        return
+
+    if not message:
+        return
+
+    chat_id = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+    if not chat_id:
+        await message.reply_text("TELEGRAM_CHAT_ID não configurado.")
+        return
+
+    if not context.args:
+        await message.reply_text("Use /falar <mensagem>")
+        return
+
+    text = " ".join(context.args)
+
+    try:
+        bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+        await bot.send_message(chat_id=chat_id, text=text)
+
+        # Salvar no banco também
+        from shared import reply_text_safe
+        await reply_text_safe(
+            message,
+            f"✅ Mensagem enviada para o chat {chat_id}",
+            message_type="falar",
+            save_to_db=False,
+        )
+    except Exception as e:
+        await message.reply_text(f"Erro ao enviar mensagem: {e}")

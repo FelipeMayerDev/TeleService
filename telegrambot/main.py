@@ -26,6 +26,7 @@ from telegrambot.handlers.commands import (
     search_image,
     search_image_callback,
     tldr,
+    falar,
 )
 from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, sticker_media_filter, delete_sticker
 from telegrambot.handlers.errors import error_handler
@@ -45,7 +46,13 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Start the bot."""
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    application = (
+        Application.builder()
+        .token(TELEGRAM_TOKEN)
+        .connect_timeout(30)
+        .media_write_timeout(120)
+        .build()
+    )
     application.add_error_handler(error_handler)
 
     # Catch-all - save ALL messages to database
@@ -68,6 +75,7 @@ def main() -> None:
     application.add_handler(CommandHandler("online_agora", online_agora))
     application.add_handler(CommandHandler("sticker", sticker))
     application.add_handler(CommandHandler("delsticker", delete_sticker))
+    application.add_handler(CommandHandler("falar", falar))
     # /sticker com foto anexada (caption)
     application.add_handler(
         MessageHandler(sticker_photo_filter, sticker)
