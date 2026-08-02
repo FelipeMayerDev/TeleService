@@ -3,6 +3,7 @@
 import logging
 import ctypes
 import sys
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -10,8 +11,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
 import discord.opus
-from config import DISCORD_TOKEN, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
-from domain import init_database
+from config import DISCORD_TOKEN, PROFILES, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from domain import claim_game_notification, init_database
+from providers import SerpProvider
 
 # Load Opus codec for voice connections
 if not discord.opus.is_loaded():
@@ -34,12 +36,61 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 voice_state_handler: Optional[VoiceStateHandler] = None
+_discord_games: dict[int, str] = {}
+_image_cache: dict[str, str] = {}
+_steam_profiles = {profile.casefold(): profile for profile in PROFILES}
+
+
+def _playing_game(member: discord.Member) -> str | None:
+    """Return the first Discord activity explicitly marked as a game."""
+    for activity in member.activities:
+        if activity.type == discord.ActivityType.playing and activity.name:
+            return activity.name
+    return None
+
+
+def _game_image(game: str) -> str | None:
+    """Find and cache a representative gameplay image for Discord games."""
+    if game in _image_cache:
+        return _image_cache[game]
+    try:
+        image = SerpProvider().search_image(image=f"Gameplay {game}", use_cache=True)
+        if image:
+            _image_cache[game] = image
+            return image
+    except Exception as exc:
+        logger.warning("Could not find image for %s: %s", game, exc)
+    return None
+
+
+def _profile_name(member: discord.Member) -> str:
+    """Map Discord names to one unambiguous configured Steam profile."""
+    candidates = (member.display_name, member.global_name, member.name)
+    for candidate in candidates:
+        if candidate and candidate.casefold() in _steam_profiles:
+            return _steam_profiles[candidate.casefold()]
+
+    normalized_profiles = {
+        re.sub(r"[^a-z0-9]", "", profile.casefold()): profile
+        for profile in PROFILES
+    }
+    for candidate in candidates:
+        normalized = re.sub(r"[^a-z0-9]", "", (candidate or "").casefold())
+        matches = [
+            profile
+            for key, profile in normalized_profiles.items()
+            if normalized and (key.endswith(normalized) or normalized.endswith(key))
+        ]
+        if len(matches) == 1:
+            return matches[0]
+    return member.display_name
 
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.voice_states = True
 intents.members = True
+intents.presences = True
 
 client = discord.Client(intents=intents)
 
@@ -62,6 +113,38 @@ async def on_ready():
         cooldown=5,
         ignored_bot_names=set(),
     )
+
+
+@client.event
+async def on_presence_update(before, after):
+    """Notify when Discord reports a new game, sharing Steam's persisted state."""
+    if after.bot or not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+
+    game = _playing_game(after)
+    previous_game = _discord_games.get(after.id)
+    if game == previous_game:
+        return
+    if not game:
+        _discord_games.pop(after.id, None)
+        return
+
+    _discord_games[after.id] = game
+    profile = _profile_name(after)
+    if not claim_game_notification(profile, game):
+        logger.info("Game already claimed by Steam for %s: %s", profile, game)
+        return
+
+    text = f"🎮 {profile} está jogando {game}"
+    await send_telegram_message(
+        token=TELEGRAM_TOKEN,
+        chat_id=TELEGRAM_CHAT_ID,
+        text=text,
+        photo=_game_image(game),
+        save_to_db=True,
+        message_type="steam_notification",
+    )
+    logger.info("Discord game notification sent: %s", text)
 
 
 @client.event

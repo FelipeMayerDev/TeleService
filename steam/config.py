@@ -14,6 +14,3 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 STEAM_API_BASE = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
 COMMUNITY_RESOLVE_URL = "https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/"
 
-# Cookie para scraping de jogos non-Steam (perfil web da comunidade).
-# Formato MozillaCookieJar (Netscape cookies.txt).
-STEAM_COOKIE_PATH = os.getenv("STEAM_COOKIE_PATH", "/app/steam/steam-cookie.txt")

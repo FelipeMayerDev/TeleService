@@ -61,6 +61,45 @@ class SteamProfileState(BaseModel):
         table_name = "steam_profile_state"
 
 
+def claim_game_notification(
+    profile: str, game: str, game_id: int | None = None
+) -> bool:
+    """Atomically claim a person/game transition across all monitor processes."""
+    now = datetime.now()
+    with db.atomic("IMMEDIATE"):
+        state = SteamProfileState.get_or_none(SteamProfileState.profile == profile)
+        if state and state.is_playing and state.game == game:
+            return False
+        if state:
+            state.is_playing = True
+            state.game = game
+            state.game_id = game_id
+            state.last_notified_at = now
+            state.updated_at = now
+            state.save()
+        else:
+            SteamProfileState.create(
+                profile=profile,
+                is_playing=True,
+                game=game,
+                game_id=game_id,
+                last_notified_at=now,
+                updated_at=now,
+            )
+    return True
+
+
+class MediaShare(BaseModel):
+    """Quem já enviou cada link de mídia no grupo (detecção de repetidos)."""
+    link = TextField(index=True)
+    sender = TextField()
+    chat_id = IntegerField()
+    created_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = "media_share"
+
+
 def init_database():
     with db:
         if not Feature.table_exists():
@@ -84,3 +123,6 @@ def init_database():
 
         if not SteamProfileState.table_exists():
             SteamProfileState.create_table()
+
+        if not MediaShare.table_exists():
+            MediaShare.create_table()

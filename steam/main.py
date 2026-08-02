@@ -1,14 +1,13 @@
 import asyncio
 import sys
-from http.cookiejar import MozillaCookieJar
 from pathlib import Path
 from datetime import datetime
-
-from bs4 import BeautifulSoup
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+import os
 
 import requests
 from config import (
@@ -18,78 +17,18 @@ from config import (
     PROFILES,
     STEAM_API_BASE,
     STEAM_API_KEY,
-    STEAM_COOKIE_PATH,
 )
 
 sys.path.append(str(Path(__file__).parent.parent))
 from providers import SerpProvider
 from shared import send_telegram_message
-from domain import init_database, SteamProfileState
+from domain import claim_game_notification, init_database, SteamProfileState
 
 active_check_interval = int(ACTIVE_CHECK_INTERVAL)
 offline_check_interval = int(OFFLINE_CHECK_INTERVAL)
 profiles_to_watch = PROFILES.split(",") if PROFILES else []
 
 IMAGE_CACHE: dict[str, str] = {}
-
-_scrape_session: requests.Session | None = None
-
-
-def _get_scrape_session() -> requests.Session | None:
-    """Retorna uma sessão requests com o cookie Steam carregado (singleton).
-
-    Carrega o cookie uma única vez no startup. Se o cookie for atualizado,
-    basta reiniciar o container para recarregar.
-    """
-    global _scrape_session
-    if _scrape_session is not None:
-        return _scrape_session
-    try:
-        jar = MozillaCookieJar()
-        jar.load(STEAM_COOKIE_PATH, ignore_discard=True, ignore_expires=True)
-        _scrape_session = requests.Session()
-        for cookie in jar:
-            _scrape_session.cookies.set_cookie(cookie)
-        print("Steam cookie loaded for web scraping")
-        return _scrape_session
-    except Exception as e:
-        print(f"Could not load Steam cookie (non-Steam detection disabled): {e}")
-        return None
-
-
-def get_non_steam_game(steam_id: str) -> str | None:
-    """Faz scraping da página do perfil para detectar jogos non-Steam.
-
-    A Steam API (GetPlayerSummaries) não reporta jogos non-Steam de forma
-    confiável. Esta função consulta a página web do perfil, que mostra o
-    status real de jogo (incluindo non-Steam).
-
-    Retorna o nome do jogo, ou None se o perfil não estiver jogando.
-    """
-    session = _get_scrape_session()
-    if session is None:
-        return None
-
-    url = f"https://steamcommunity.com/profiles/{steam_id}"
-    try:
-        resp = session.get(url, timeout=10)
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        # So considerar como jogando se o container tiver a classe 'in-game'.
-        # Perfis offline/online (sem jogar) tambem tem profile_in_game_name,
-        # mas com textos como "Last Online X ago" — precisamos filtrar.
-        in_game_container = soup.select_one("div.profile_in_game.in-game")
-        if not in_game_container:
-            return None
-
-        name = soup.select_one("div.profile_in_game_name")
-        if name:
-            return name.get_text(strip=True)
-        return None
-    except Exception as e:
-        print(f"Error scraping profile {steam_id}: {e}")
-        return None
-
 
 def get_game_image(game: str, gameid: str | None) -> str | None:
     if game in IMAGE_CACHE:
@@ -254,21 +193,10 @@ async def get_playing_profiles(profiles: list[str]) -> None:
             gameid = data.get("gameid")
             someone_playing = True
 
-        # Fallback: a Steam API nao reporta jogos non-Steam de forma confiavel.
-        # Se a API nao detectou jogo, faz scraping da pagina web do perfil.
-        if not is_playing:
-            scraped_game = get_non_steam_game(steam_id)
-            if scraped_game:
-                game = scraped_game
-                is_playing = True
-                someone_playing = True
-                print(f"Non-Steam game detected via scraping for {profile}: {scraped_game}")
-
         # Get current state from database
         current_state = get_profile_state(profile)
         old_is_playing = current_state["is_playing"] if current_state else False
         old_game = current_state["game"] if current_state else None
-        last_notified_at = current_state["last_notified_at"] if current_state else None
 
         # Check if state changed
         state_changed = False
@@ -278,13 +206,10 @@ async def get_playing_profiles(profiles: list[str]) -> None:
             # Changed to a different game
             state_changed = True
 
-        # Anti-spam: if already notified for same game recently, don't notify again
-        should_notify = state_changed and is_playing
-        if last_notified_at and is_playing and old_game == game:
-            time_since_notif = (datetime.now() - last_notified_at).total_seconds()
-            if time_since_notif < 60:  # Don't notify more than once per minute for same game
-                should_notify = False
-                print(f"Skipping notification for {profile} (notified {int(time_since_notif)}s ago for same game)")
+        # Recheck and claim atomically: Discord and Steam may observe this at once.
+        should_notify = state_changed and is_playing and claim_game_notification(
+            profile, game, int(gameid) if gameid else None
+        )
 
         if should_notify:
             image_url = get_game_image(game, gameid)
@@ -298,8 +223,6 @@ async def get_playing_profiles(profiles: list[str]) -> None:
                     message_type="steam_notification",
                 )
             print(message)
-            # Update state with notified=True
-            update_profile_state(profile, is_playing, game, gameid, notified=True)
         else:
             # Just update state without notification
             update_profile_state(profile, is_playing, game, gameid, notified=False)

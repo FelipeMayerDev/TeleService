@@ -10,6 +10,7 @@ services:
     volumes:
       - ./database.sqlite:/app/database.sqlite
       - ./database.sqlite:/app/telegrambot/database.sqlite
+      - ./database.sqlite:/app/discordbot/database.sqlite
 
   telegrambot:
     restart: unless-stopped
@@ -24,6 +25,8 @@ services:
       - ./telegrambot/handlers/sticker.py:/app/telegrambot/handlers/sticker.py:ro
       - ./telegrambot/main.py:/app/telegrambot/main.py:ro
       - ./instagram-cookies.txt:/app/instagram-cookies.txt
+      - ./steam/cs2_1.jpg:/app/steam/cs2_1.jpg:ro
+      - ./steam/cs2_2.jpg:/app/steam/cs2_2.jpg:ro
       - rembg-model:/root/.u2net
 
   steam:
@@ -36,7 +39,7 @@ services:
     volumes:
       - ./database.sqlite:/app/database.sqlite
       - ./database.sqlite:/app/telegrambot/database.sqlite
-      - ./steam/steam-cookie.txt:/app/steam/steam-cookie.txt:ro
+      - ./database.sqlite:/app/steam/database.sqlite
 
 volumes:
   telegrambot-db:
