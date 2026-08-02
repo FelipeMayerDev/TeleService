@@ -4,6 +4,7 @@ import logging
 import ctypes
 import sys
 import re
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
 import discord.opus
+import requests
+from PIL import Image
 from config import DISCORD_TOKEN, PROFILES, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from domain import claim_game_notification, init_database
 from providers import SerpProvider
@@ -37,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 voice_state_handler: Optional[VoiceStateHandler] = None
 _discord_games: dict[int, str] = {}
-_image_cache: dict[str, str] = {}
+_image_cache: dict[str, bytes] = {}
 _steam_profiles = {profile.casefold(): profile for profile in PROFILES}
 
 
@@ -49,13 +52,25 @@ def _playing_game(member: discord.Member) -> str | None:
     return None
 
 
-def _game_image(game: str) -> str | None:
+def _game_image(game: str) -> bytes | None:
     """Find and cache a representative gameplay image for Discord games."""
     if game in _image_cache:
         return _image_cache[game]
     try:
-        image = SerpProvider().search_image(image=f"Gameplay {game}", use_cache=True)
-        if image:
+        image_url = SerpProvider().search_image(
+            image=f"Gameplay {game}", use_cache=True
+        )
+        if image_url:
+            response = requests.get(image_url, timeout=15)
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type", "")
+            if not content_type.startswith("image/"):
+                raise ValueError(f"unexpected content type: {content_type}")
+            with Image.open(BytesIO(response.content)) as source:
+                source.thumbnail((1280, 1280))
+                output = BytesIO()
+                source.convert("RGB").save(output, format="JPEG", quality=82, optimize=True)
+            image = output.getvalue()
             _image_cache[game] = image
             return image
     except Exception as exc:
@@ -136,7 +151,7 @@ async def on_presence_update(before, after):
         return
 
     text = f"🎮 {profile} está jogando {game}"
-    await send_telegram_message(
+    sent = await send_telegram_message(
         token=TELEGRAM_TOKEN,
         chat_id=TELEGRAM_CHAT_ID,
         text=text,
@@ -144,7 +159,10 @@ async def on_presence_update(before, after):
         save_to_db=True,
         message_type="steam_notification",
     )
-    logger.info("Discord game notification sent: %s", text)
+    if sent:
+        logger.info("Discord game notification sent: %s", text)
+    else:
+        logger.error("Discord game notification failed: %s", text)
 
 
 @client.event

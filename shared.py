@@ -100,6 +100,16 @@ async def send_telegram_message(
             return (message.message_id, int(chat_id))
     except Exception as e:
         logger.error(f"Error sending to Telegram: {e}")
+        if photo and text:
+            logger.warning("Photo failed; retrying Telegram notification as text")
+            return await send_telegram_message(
+                token=token,
+                chat_id=chat_id,
+                text=text,
+                photo=None,
+                save_to_db=save_to_db,
+                message_type=message_type,
+            )
         return None
 
 
