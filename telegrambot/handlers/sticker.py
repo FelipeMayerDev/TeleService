@@ -114,14 +114,14 @@ def _process_static_image(raw_bytes: bytes, remove_bg: bool = False) -> bytes | 
         if remove_bg:
             img = _remove_bg_from_image(img)
 
-        # Cover-resize: scale to fill 512x512, crop excess
+        # Telegram stickers: um lado exatamente 512, mantém proporção (upscale se pequeno)
         w, h = img.size
-        ratio = max(512 / w, 512 / h)
-        img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-        w, h = img.size
-        left = (w - 512) // 2
-        top = (h - 512) // 2
-        img = img.crop((left, top, left + 512, top + 512))
+        ratio = 512 / max(w, h)
+        if w >= h:
+            size = (512, max(1, round(h * ratio)))
+        else:
+            size = (max(1, round(w * ratio)), 512)
+        img = img.resize(size, Image.LANCZOS)
 
         out = io.BytesIO()
         img.save(out, format="PNG")
