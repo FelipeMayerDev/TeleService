@@ -79,10 +79,37 @@ def is_link(text: str) -> bool:
 def is_allowed_link(text: str):
     if not is_link(text):
         return False
-    allowed_links = ["youtube.com/shorts/", "instagram.com/reel/", "instagram.com/reels/", "instagram.com/p/", "facebook.com/reel/", "bsky", "/status/"]
+    allowed_links = ["youtube.com/shorts/", "youtube.com/watch", "youtu.be/", "instagram.com/reel/", "instagram.com/reels/", "instagram.com/p/", "facebook.com/reel/", "bsky", "/status/"]
     if not any(link for link in allowed_links if link in text):
         return False
     return True
+
+
+def probe_media(link) -> bool:
+    """True se yt-dlp reconhece o link e tem mídia (vídeo/imagem) baixável."""
+    try:
+        ydl_opts = get_ydl_opts({"skip_download": True})
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.extract_info(link, download=False)
+        return True
+    except Exception:
+        return False
+
+
+YOUTUBE_MAX_DURATION = 180  # 3 min — mesmo teto dos shorts, agora p/ watch/youtu.be
+
+
+def youtube_too_long(link: str) -> bool:
+    """YouTube (watch/shorts/youtu.be) com duração > 3 min não vira mídia."""
+    if not any(h in link for h in ("youtube.com/", "youtu.be/")):
+        return False
+    try:
+        info = yt_dlp.YoutubeDL(get_ydl_opts({"skip_download": True})).extract_info(
+            link, download=False
+        )
+        return (info.get("duration") or 0) > YOUTUBE_MAX_DURATION
+    except Exception:
+        return False
 
 
 def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
@@ -126,35 +153,39 @@ def transcribe_audio(url: str, model_size: str, tmpdir: str) -> dict:
         return (text, title, origin)
 
 
-def get_media_from_link(link) -> Optional[Tuple[any, any]]:
-    """Baixa mídia do link e retorna (buffer_video, titulo, thumbnail_url)."""
+def get_media_from_link(link) -> Optional[Tuple[io.BytesIO, str, str, str]]:
+    """Baixa mídia do link e retorna (buffer, titulo, thumbnail_url, tipo).
+
+    tipo: 'video' ou 'image'. A extensão real do arquivo baixado decide qual.
+    """
     try:
         ydl_opts = get_ydl_opts({
-            "format": "best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best",
+            # YouTube moderno: sem formatos progressivos (vídeo+áudio juntos) —
+            # precisa de merge video+audio (ffmpeg). "best" sozinho falha com
+            # "Requested format is not available" em vários vídeos.
+            "format": "best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best",
             "postprocessor_args": ["-movflags", "+faststart"],
-            "outtmpl": "/tmp/video.%(ext)s",
+            "outtmpl": "/tmp/media.%(ext)s",
             "cachedir": False,
             "socket_timeout": 30,
         })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=True)
 
-        # Ler o arquivo baixado para memória
-        video_path = "/tmp/video.mp4"
-        if not os.path.exists(video_path):
-            # Tenta encontrar o arquivo com outro formato
-            import glob
-            video_files = glob.glob("/tmp/video.*")
-            if video_files:
-                video_path = video_files[0]
-            else:
-                raise VideoNotFound("Video download failed")
+        # Localiza o arquivo baixado — a extensão varia (mp4, jpg, webp, ...)
+        files = glob.glob("/tmp/media.*")
+        if not files:
+            raise VideoNotFound("Media download failed")
+        media_path = files[0]
 
-        with open(video_path, "rb") as f:
-            video_buffer = io.BytesIO(f.read())
+        # ponytail: a extensão real é a fonte de verdade do tipo de mídia
+        ext = os.path.splitext(media_path)[1].lower().lstrip(".")
+        media_type = "image" if ext in ("jpg", "jpeg", "png", "webp", "gif") else "video"
 
-        # Limpa o arquivo temporário
-        os.remove(video_path)
+        with open(media_path, "rb") as f:
+            buffer = io.BytesIO(f.read())
+
+        os.remove(media_path)
 
         thumbnail = info.get("thumbnail")
         if not thumbnail and info.get("thumbnails"):
@@ -165,7 +196,7 @@ def get_media_from_link(link) -> Optional[Tuple[any, any]]:
                     thumbnail = fmt["thumbnails"][0].get("url")
                     break
 
-        return (video_buffer, info.get("title"), thumbnail)
+        return (buffer, info.get("title"), thumbnail, media_type)
     except Exception as e:
         print(f"Error: {e}")
         raise e
