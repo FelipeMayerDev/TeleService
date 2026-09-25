@@ -18,9 +18,15 @@ from telegram.ext import filters as tg_filters
 log = logging.getLogger(__name__)
 
 FAKEGROK_TOKEN = os.getenv("FAKEGROK_TOKEN", "")
+# ponytail: dono do pack fixo — Telegram exige user_id do criador (que iniciou o bot),
+# não de quem mandou. Novo dono = trocar aqui.
+STICKER_OWNER_ID = 138317474  # @fockytheguy
 STICKER_SET_NAME = "fakegrok_pack_by_fakegrokbot"
 STICKER_SET_TITLE = "FakeGrok Pack"
 TELEGRAM_API = "https://api.telegram.org"
+
+# Full pack → rotate to _2, _3... (Telegram limit: 120 stickers/set; 1 Fallback + 1 Video + 1 Premium)
+STICKERS_PER_SET = 119
 
 # Separate animated sticker set (TGS/WebM stickers need their own pack)
 ANIMATED_STICKER_SET_NAME = "fakegrok_animated_by_fakegrokbot"
@@ -283,60 +289,74 @@ def _download_image(img_bytes_or_url: bytes | str) -> bytes | None:
         return None
 
 
-def _upload_static_sticker(png_bytes: bytes, user_id: int, emoji: str) -> str | None:
-    """Envia sticker estático pro pack do FakeGrok. Retorna link ou None."""
+def _set_count(name: str) -> int:
+    """Número de stickers num set (0 se não existe)."""
+    try:
+        resp = req.get(f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/getStickerSet",
+                       params={"name": name}, timeout=15).json()
+        return len(resp["result"]["stickers"]) if resp.get("ok") else 0
+    except Exception:
+        return 0
+
+
+def _upload_to_set(set_base: str, title: str, file_field: str, filename: str,
+                   file_bytes: bytes, file_mime: str, emoji: str) -> tuple[bool, str]:
+    """Adiciona sticker ao set, rotacionando pra _2/_3/... quando cheio.
+
+    Retorna (ok, link_do_set_ou_erro).
+    """
+    # Acha o primeiro set com vaga: base, _2, _3, ...
+    idx = 1
+    while _set_count(_set_name(set_base, idx)) >= STICKERS_PER_SET:
+        idx += 1
+    set_name = _set_name(set_base, idx)
+
     url = f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/addStickerToSet"
-    files = {"png_sticker": ("sticker.png", png_bytes, "image/png")}
-    data = {"user_id": str(user_id), "name": STICKER_SET_NAME, "emojis": emoji}
-
-    resp = req.post(url, files=files, data=data, timeout=15).json()
-
-    if resp.get("ok"):
-        return f"https://t.me/addstickers/{STICKER_SET_NAME}"
-
-    # Pack nao existe? Criar
-    url2 = f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/createNewStickerSet"
-    files2 = {"png_sticker": ("sticker.png", png_bytes, "image/png")}
-    data2 = {
-        "user_id": str(user_id),
-        "name": STICKER_SET_NAME,
-        "title": STICKER_SET_TITLE,
-        "emojis": emoji,
-    }
-
-    resp2 = req.post(url2, files=files2, data=data2, timeout=15).json()
-    if resp2.get("ok"):
-        return f"https://t.me/addstickers/{STICKER_SET_NAME}"
-
-    return f"Erro: {resp.get('description', resp2.get('description', 'desconhecido'))}"
-
-
-def _upload_animated_sticker(webm_bytes: bytes, user_id: int, emoji: str) -> str | None:
-    """Envia sticker animado pro pack animado do FakeGrok. Retorna link ou None."""
-    url = f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/addStickerToSet"
-    files = {"webm_sticker": ("sticker.webm", webm_bytes, "video/webm")}
-    data = {"user_id": str(user_id), "name": ANIMATED_STICKER_SET_NAME, "emojis": emoji}
-
+    files = {file_field: (filename, file_bytes, file_mime)}
+    data = {"user_id": str(STICKER_OWNER_ID), "name": set_name, "emojis": emoji}
     resp = req.post(url, files=files, data=data, timeout=30).json()
-
     if resp.get("ok"):
-        return f"https://t.me/addstickers/{ANIMATED_STICKER_SET_NAME}"
+        return True, f"https://t.me/addstickers/{set_name}"
 
-    # Pack nao existe? Criar
+    # Set não existe ainda → criar
+    desc = resp.get("description", "")
+    if "SET_NOT_FOUND" not in desc and "not found" not in desc.lower():
+        return False, desc or "desconhecido"
+
     url2 = f"{TELEGRAM_API}/bot{FAKEGROK_TOKEN}/createNewStickerSet"
-    files2 = {"webm_sticker": ("sticker.webm", webm_bytes, "video/webm")}
+    files2 = {file_field: (filename, file_bytes, file_mime)}
     data2 = {
-        "user_id": str(user_id),
-        "name": ANIMATED_STICKER_SET_NAME,
-        "title": ANIMATED_STICKER_SET_TITLE,
+        "user_id": str(STICKER_OWNER_ID),
+        "name": set_name,
+        "title": _set_title(title, idx),
         "emojis": emoji,
     }
-
     resp2 = req.post(url2, files=files2, data=data2, timeout=30).json()
     if resp2.get("ok"):
-        return f"https://t.me/addstickers/{ANIMATED_STICKER_SET_NAME}"
+        return True, f"https://t.me/addstickers/{set_name}"
+    return False, resp2.get("description", desc or "desconhecido")
 
-    return f"Erro: {resp.get('description', resp2.get('description', 'desconhecido'))}"
+
+def _set_name(base: str, idx: int) -> str:
+    return base if idx == 1 else f"{base}_{idx}"
+
+
+def _set_title(title: str, idx: int) -> str:
+    return title if idx == 1 else f"{title} {idx}"
+
+
+def _upload_static_sticker(png_bytes: bytes, emoji: str) -> str | None:
+    """Envia sticker estático pro pack do FakeGrok. Retorna link ou msg de erro."""
+    ok, res = _upload_to_set(STICKER_SET_NAME, STICKER_SET_TITLE,
+                             "png_sticker", "sticker.png", png_bytes, "image/png", emoji)
+    return res if ok else f"Erro: {res}"
+
+
+def _upload_animated_sticker(webm_bytes: bytes, emoji: str) -> str | None:
+    """Envia sticker animado pro pack animado do FakeGrok. Retorna link ou msg de erro."""
+    ok, res = _upload_to_set(ANIMATED_STICKER_SET_NAME, ANIMATED_STICKER_SET_TITLE,
+                             "webm_sticker", "sticker.webm", webm_bytes, "video/webm", emoji)
+    return res if ok else f"Erro: {res}"
 
 
 def _extract_url(text: str) -> str | None:
@@ -372,7 +392,6 @@ async def sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     user = update.effective_user
     message = update.message
-    user_id = user.id if user else 1
 
     # Extract args from command text or caption
     if context.args:
@@ -552,7 +571,7 @@ async def sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             try:
                 webm_bytes = _process_animated(tmp_path, remove_bg=args["remove_bg"])
                 if webm_bytes:
-                    result = _upload_animated_sticker(webm_bytes, user_id, args["emoji"])
+                    result = _upload_animated_sticker(webm_bytes, args["emoji"])
                 else:
                     await status.edit_text("❌ Não consegui processar o vídeo/GIF.")
                     return
@@ -577,7 +596,7 @@ async def sticker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 await status.edit_text("❌ Não consegui processar a imagem.")
                 return
 
-            result = _upload_static_sticker(png_bytes, user_id, args["emoji"])
+            result = _upload_static_sticker(png_bytes, args["emoji"])
 
         if result and not result.startswith("Erro"):
             if is_animated_input:
