@@ -1,4 +1,6 @@
 import logging
+import os
+import re
 
 from telegram import ForceReply, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
@@ -10,14 +12,14 @@ from providers.groq import GroqProvider
 from providers.serp import SerpProvider
 from providers.zai import ZAIProvider
 from shared import reply_photo_safe, reply_text_safe
-from telegrambot.handlers.utils import is_valid_link, transcribe_audio
+from telegrambot.handlers.utils import INSTAGRAM_COOKIES_PATH, is_valid_link, transcribe_audio
 
 logger = logging.getLogger(__name__)
 message_service = MessageService()
 
 
-def get_text_content(url: str) -> tuple[str, str] | None:
-    """Baixa o conteúdo de texto de um site e retorna (texto, título)."""
+def get_text_content(url: str) -> tuple[str, str, list[str]] | None:
+    """Baixa texto e imagens de um site. Retorna (texto, título, imagens)."""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -27,27 +29,76 @@ def get_text_content(url: str) -> tuple[str, str] | None:
 
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Tenta pegar o título
         title = soup.find('title')
         title = title.get_text().strip() if title else url
 
-        # Remove scripts e estilos
-        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
-            element.decompose()
+        # og:image — imagem do post (tweet photo, etc)
+        images = [m.get('content') for m in soup.find_all('meta', property='og:image') if m.get('content')]
 
-        # Pega o texto principal
-        text = soup.get_text(separator=' ', strip=True)
+        # og:description = texto limpo (tweet/social); fallback = full-page
+        og_desc = soup.find('meta', property='og:description')
+        if og_desc and og_desc.get('content') and len(og_desc['content'].strip()) >= 50:
+            text = ' '.join(og_desc['content'].split())
+        else:
+            for el in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']):
+                el.decompose()
+            text = ' '.join(soup.get_text(separator=' ', strip=True).split())
 
-        # Limpa o texto
-        text = ' '.join(text.split())
-
-        if len(text) < 100:
+        if len(text) < 50 and not images:
             return None
 
-        return (text, title)
+        return (text, title, images)
 
     except Exception as e:
         logger.error(f"Error getting text content: {e}")
+        return None
+
+
+def get_instagram_photo(url: str) -> tuple[str, str, list[str]] | None:
+    """Post de IMAGEM do Instagram (yt-dlp falha com 'No video formats found').
+
+    Usa a web API interna com os cookies já existentes. Retorna (caption, título, [url_img]).
+    """
+    import base64
+
+    m = re.search(r"instagram\.com/(?:p|reel|reels)/([A-Za-z0-9_-]+)", url)
+    if not m:
+        return None
+    try:
+        # ponytail: shortcode é base64url de int big-endian (sem padding)
+        alpha = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        media_id = 0
+        for c in m.group(1):
+            media_id = media_id * 64 + alpha.index(c)
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "X-IG-App-ID": "936619743392459",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": url,
+        }
+        cookies = {}
+        if os.path.exists(INSTAGRAM_COOKIES_PATH):
+            with open(INSTAGRAM_COOKIES_PATH) as f:
+                for line in f:
+                    if line and not line.startswith("#"):
+                        parts = line.strip().split("\t")
+                        if len(parts) == 7:
+                            cookies[parts[5]] = parts[6]
+
+        r = requests.get(
+            f"https://i.instagram.com/api/v1/media/{media_id}/info/",
+            headers=headers, cookies=cookies, timeout=20,
+        )
+        if r.status_code != 200:
+            return None
+        item = r.json()["items"][0]
+        caption = (item.get("caption") or {}).get("text", "")
+        images = [c["url"] for c in item["image_versions2"]["candidates"]]
+        title = (caption[:80] + "…") if len(caption) > 80 else (caption or "Instagram")
+        return (caption or title, title, images)
+    except Exception as e:
+        logger.error(f"Error getting instagram photo: {e}")
         return None
 
 
@@ -158,7 +209,7 @@ async def resume(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not content or not content[0]:
         text_content = get_text_content(link)
         if text_content:
-            text, title = text_content
+            text, title, _ = text_content
             content = (text, title, "Texto")
             is_media = False
         else:
@@ -472,3 +523,47 @@ async def falar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except Exception as e:
         await message.reply_text(f"Erro ao enviar mensagem: {e}")
+
+
+async def fakecs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Notificação fake de CS2 no chat principal. Apenas @fockytheguy."""
+    import os
+    import random
+    from telegram import Bot
+
+    user = update.effective_user
+    message = update.effective_message
+    if not user or (user.username or "").lower() != "fockytheguy" or not message:
+        return
+
+    if not context.args:
+        await message.reply_text("Use /fakecs <user1> <user2> ...")
+        return
+
+    names = context.args
+    game = "Counter-Strike 2"
+    if len(names) == 1:
+        caption = f"🎮 {names[0]} está jogando {game}"
+    else:
+        caption = f"🎮 {', '.join(names[:-1])} e {names[-1]} estão jogando {game}"
+
+    image_path = random.choice(["/app/steam/cs2_1.jpg", "/app/steam/cs2_2.jpg"])
+    if not os.path.exists(image_path):
+        await message.reply_text("Imagem CS2 não encontrada.")
+        return
+
+    chat_id = int(os.getenv("TELEGRAM_CHAT_ID", "0"))
+    if not chat_id:
+        await message.reply_text("TELEGRAM_CHAT_ID não configurado.")
+        return
+
+    try:
+        bot = Bot(token=os.getenv("TELEGRAM_TOKEN"))
+        with open(image_path, "rb") as f:
+            await bot.send_photo(chat_id=chat_id, photo=f, caption=caption)
+        try:
+            await message.delete()
+        except Exception:
+            pass
+    except Exception as e:
+        await message.reply_text(f"Erro: {e}")

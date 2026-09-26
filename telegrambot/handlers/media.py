@@ -14,7 +14,7 @@ from telegram.ext import CallbackContext
 
 from domain.models import MediaShare
 from shared import reply_photo_safe, reply_text_safe, reply_video_safe
-from telegrambot.handlers.commands import get_text_content
+from telegrambot.handlers.commands import get_instagram_photo, get_text_content
 from telegrambot.handlers.utils import get_media_from_link, probe_media, youtube_too_long
 
 
@@ -154,8 +154,39 @@ async def get_media(update: Update, context: CallbackContext):
                 thumb_buffer.close()
         return
 
-    # 2. Sem mídia → extrai texto + imagens (tweet com foto, artigo, etc)
-    text_content = get_text_content(link)
+    # 2. Sem mídia → post de IMAGEM do Instagram (yt-dlp falha sem formatos de vídeo)
+    if link and "instagram.com/" in link:
+        ig = get_instagram_photo(link)
+        if ig:
+            text, title, images = ig
+            try:
+                img_resp = requests.get(images[0], timeout=15)
+                if img_resp.status_code == 200 and img_resp.content:
+                    img_buf = io.BytesIO(img_resp.content)
+                    img_buf.seek(0)
+                    safe_text = escape(text)
+                    if len(safe_text) > 800:
+                        safe_text = safe_text[:800].rstrip() + " […]"
+                    cap = (
+                        f"<b>{escape(title)}</b>\n\n"
+                        f"{safe_text}\n\n"
+                        f'<a href="{escape(link)}">🔗 Link</a>\n'
+                        f"{sent_by}"
+                    )
+                    await status_message.edit_text("📤 Enviando imagem...")
+                    await reply_photo_safe(
+                        update.message, photo=img_buf, caption=cap,
+                        parse_mode="HTML", message_type="media",
+                    )
+                    await status_message.delete()
+                    img_buf.close()
+                    return
+            except Exception as e:
+                await status_message.edit_text(f"❌ Erro ao enviar imagem do Instagram: {e}")
+                return
+
+    # 3. Sem mídia → extrai texto + imagens (tweet com foto, artigo, etc)
+    text_content = get_text_content(link) if link else None
     if not text_content:
         await status_message.edit_text("❌ Nenhum conteúdo encontrado")
         return
