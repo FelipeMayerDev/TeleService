@@ -94,7 +94,22 @@ def get_instagram_photo(url: str) -> tuple[str, str, list[str]] | None:
             return None
         item = r.json()["items"][0]
         caption = (item.get("caption") or {}).get("text", "")
-        images = [c["url"] for c in item["image_versions2"]["candidates"]]
+
+        # carrossel → uma URL por item (foto: melhor candidate; vídeo: poster)
+        if item.get("carousel_media"):
+            images = []
+            for child in item["carousel_media"]:
+                if child["media_type"] == 2:
+                    continue  # ponytail: vídeo dentro de carrossel manda só as fotos
+                candidates = child["image_versions2"]["candidates"]
+                best = max(candidates, key=lambda c: c.get("width", 0))
+                images.append(best["url"])
+            if not images:
+                return None
+        else:
+            candidates = item["image_versions2"]["candidates"]
+            images = [max(candidates, key=lambda c: c.get("width", 0))["url"]]
+
         title = (caption[:80] + "…") if len(caption) > 80 else (caption or "Instagram")
         return (caption or title, title, images)
     except Exception as e:

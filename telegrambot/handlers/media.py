@@ -13,7 +13,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 
 from domain.models import MediaShare
-from shared import reply_photo_safe, reply_text_safe, reply_video_safe
+from shared import reply_media_group_safe, reply_photo_safe, reply_text_safe, reply_video_safe
 from telegrambot.handlers.commands import get_instagram_photo, get_text_content
 from telegrambot.handlers.utils import get_media_from_link, probe_media, youtube_too_long
 
@@ -159,28 +159,35 @@ async def get_media(update: Update, context: CallbackContext):
         ig = get_instagram_photo(link)
         if ig:
             text, title, images = ig
+            safe_text = escape(text)
+            if len(safe_text) > 800:
+                safe_text = safe_text[:800].rstrip() + " […]"
+            cap = (
+                f"<b>{escape(title)}</b>\n\n"
+                f"{safe_text}\n\n"
+                f'<a href="{escape(link)}">🔗 Link</a>\n'
+                f"{sent_by}"
+            )
+            await status_message.edit_text("📤 Enviando imagem...")
             try:
-                img_resp = requests.get(images[0], timeout=15)
-                if img_resp.status_code == 200 and img_resp.content:
+                if len(images) > 1:
+                    await reply_media_group_safe(
+                        update.message, image_urls=images, caption=cap,
+                        parse_mode="HTML", message_type="media",
+                    )
+                else:
+                    img_resp = requests.get(images[0], timeout=15)
+                    if img_resp.status_code != 200 or not img_resp.content:
+                        raise ValueError(f"download da imagem falhou: HTTP {img_resp.status_code}")
                     img_buf = io.BytesIO(img_resp.content)
                     img_buf.seek(0)
-                    safe_text = escape(text)
-                    if len(safe_text) > 800:
-                        safe_text = safe_text[:800].rstrip() + " […]"
-                    cap = (
-                        f"<b>{escape(title)}</b>\n\n"
-                        f"{safe_text}\n\n"
-                        f'<a href="{escape(link)}">🔗 Link</a>\n'
-                        f"{sent_by}"
-                    )
-                    await status_message.edit_text("📤 Enviando imagem...")
                     await reply_photo_safe(
                         update.message, photo=img_buf, caption=cap,
                         parse_mode="HTML", message_type="media",
                     )
-                    await status_message.delete()
                     img_buf.close()
-                    return
+                await status_message.delete()
+                return
             except Exception as e:
                 await status_message.edit_text(f"❌ Erro ao enviar imagem do Instagram: {e}")
                 return

@@ -289,6 +289,60 @@ async def reply_photo_safe(
     return reply_msg
 
 
+async def reply_media_group_safe(
+    message: Message,
+    image_urls: list,
+    caption: Optional[str] = None,
+    parse_mode: Optional[str] = None,
+    message_type: str = "media",
+    save_to_db: bool = True,
+) -> Optional[list]:
+    """Envia álbum (MediaGroup) de fotos por URL. Caption vai só no 1º item
+    (limite do Telegram). Retorna a lista de messages do álbum."""
+    from telegram import InputMediaPhoto
+
+    media = [InputMediaPhoto(u) for u in image_urls[:10]]  # ponytail: Telegram aceita no máx 10
+    media[0].caption = caption
+    media[0].parse_mode = parse_mode
+    try:
+        reply_msgs = await message.reply_media_group(media)
+    except TimedOut:
+        # ponytail: TimedOut no upload quase sempre = entregue sem ack
+        logger.warning("reply_media_group timed out — upload likely succeeded")
+        return None
+
+    if save_to_db and reply_msgs:
+        from_user = None
+        try:
+            if message.reply_to_message and message.reply_to_message.bot:
+                from_user = (
+                    message.reply_to_message.bot.first_name
+                    or message.reply_to_message.bot.username
+                )
+            elif message.reply_to_message and message.reply_to_message.from_user:
+                from_user = (
+                    message.reply_to_message.from_user.username
+                    or message.reply_to_message.from_user.first_name
+                )
+        except Exception:
+            from_user = None
+        try:
+            message_service.add_telegram_message(
+                telegram_message_id=reply_msgs[0].message_id,
+                text=caption or "[Media group]",
+                chat_id=message.chat_id,
+                from_user=from_user or "Bot",
+                to_user=None,
+                reply_to_message_id=message.message_id,
+                reply_text=message.text or message.caption,
+                message_type=message_type,
+            )
+        except Exception as e:
+            logger.error(f"Error saving media group to database: {e}")
+
+    return list(reply_msgs)
+
+
 async def reply_video_safe(
     message: Message,
     video,
