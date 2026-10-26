@@ -8,7 +8,8 @@ from serpapi import GoogleSearch
 
 from .config import SERPAPI_API_KEY
 
-CACHE_FILE = "/app/database.sqlite/image_cache.json"
+# ponytail: /app é FS do container, perde no rebuild — ok, TTL 7d repõe com 1 busca
+CACHE_FILE = "/app/image_cache.json"
 CACHE_TTL = 86400 * 7  # 7 days
 
 
@@ -99,14 +100,16 @@ class SerpProvider:
         """Search images across multiple providers. Returns URL or None.
 
         Chain: SerpAPI → Openverse → Wikimedia. First non-empty wins.
+        Cache guarda a lista completa; cada HIT sorteia uma URL
+        (mesma lógica do /image, só que sem repetir a busca).
         """
         SerpProvider._load_cache()
 
         if use_cache:
-            cached = SerpProvider._cache.get(image)
-            if cached:
+            urls = SerpProvider._cache.get(image, {}).get("urls", [])
+            if urls:
                 print(f"Image cache HIT for: {image}")
-                return cached["url"]
+                return choice(urls)
 
         for provider in (
             SerpProvider._serpapi_search,
@@ -116,12 +119,11 @@ class SerpProvider:
             try:
                 urls = provider(image, limit)
                 if urls:
-                    url = choice(urls)
                     if use_cache:
-                        SerpProvider._cache[image] = {"url": url, "ts": time.time()}
+                        SerpProvider._cache[image] = {"urls": urls, "ts": time.time()}
                         SerpProvider._save_cache()
                         print(f"Image cache MISS for: {image} (saved to cache)")
-                    return url
+                    return choice(urls)
             except Exception as e:
                 print(f"{provider.__name__} failed: {e}")
 

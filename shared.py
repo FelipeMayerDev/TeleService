@@ -1,5 +1,6 @@
 import logging
 import os
+import asyncio
 from typing import Optional, Tuple
 
 from dotenv import load_dotenv
@@ -61,56 +62,62 @@ async def send_telegram_message(
     print(token)
     bot = Bot(token=token)
 
-    try:
-        if photo:
-            message = await bot.send_photo(chat_id=chat_id, photo=photo, caption=text)
-            log_text = text[:50] if text else "No caption"
-            logger.info(f"Sent photo to Telegram: {log_text}...")
-            if save_to_db and chat_id:
-                message_service.add_telegram_message(
-                    telegram_message_id=message.message_id,
-                    text=text or "[Photo]",
-                    chat_id=int(chat_id),
-                    from_user="System",
-                    to_user=None,
-                    reply_to_message_id=None,
-                    reply_text=None,
-                    message_type=message_type or "photo",
-                )
-                _save_to_telegrambot_db(message.message_id, int(chat_id), text or "[Photo]", message_type or "photo")
-            return (message.message_id, int(chat_id))
-        else:
-            if not text:
-                logger.warning("No text provided for message")
-                return None
-            message = await bot.send_message(chat_id=chat_id, text=text)
-            logger.info(f"Sent to Telegram: {text[:50]}...")
-            if save_to_db and chat_id:
-                message_service.add_telegram_message(
-                    telegram_message_id=message.message_id,
+    # ponytail: 3 tentativas com backoff curto — timeout transitório do Telegram não pode
+    # engolir notificação de voice (o bot já apagou o estado no DB antes de enviar).
+    for attempt in range(1, 4):
+        try:
+            if photo:
+                message = await bot.send_photo(chat_id=chat_id, photo=photo, caption=text)
+                log_text = text[:50] if text else "No caption"
+                logger.info(f"Sent photo to Telegram: {log_text}...")
+                if save_to_db and chat_id:
+                    message_service.add_telegram_message(
+                        telegram_message_id=message.message_id,
+                        text=text or "[Photo]",
+                        chat_id=int(chat_id),
+                        from_user="System",
+                        to_user=None,
+                        reply_to_message_id=None,
+                        reply_text=None,
+                        message_type=message_type or "photo",
+                    )
+                    _save_to_telegrambot_db(message.message_id, int(chat_id), text or "[Photo]", message_type or "photo")
+                return (message.message_id, int(chat_id))
+            else:
+                if not text:
+                    logger.warning("No text provided for message")
+                    return None
+                message = await bot.send_message(chat_id=chat_id, text=text)
+                logger.info(f"Sent to Telegram: {text[:50]}...")
+                if save_to_db and chat_id:
+                    message_service.add_telegram_message(
+                        telegram_message_id=message.message_id,
+                        text=text,
+                        chat_id=int(chat_id),
+                        from_user="System",
+                        to_user=None,
+                        reply_to_message_id=None,
+                        reply_text=None,
+                        message_type=message_type or "text",
+                    )
+                    _save_to_telegrambot_db(message.message_id, int(chat_id), text, message_type or "text")
+                return (message.message_id, int(chat_id))
+        except Exception as e:
+            logger.error(f"Error sending to Telegram (attempt {attempt}/3): {e}")
+            if attempt < 3:
+                await asyncio.sleep(2 * attempt)
+                continue
+            if photo and text:
+                logger.warning("Photo failed; retrying Telegram notification as text")
+                return await send_telegram_message(
+                    token=token,
+                    chat_id=chat_id,
                     text=text,
-                    chat_id=int(chat_id),
-                    from_user="System",
-                    to_user=None,
-                    reply_to_message_id=None,
-                    reply_text=None,
-                    message_type=message_type or "text",
+                    photo=None,
+                    save_to_db=save_to_db,
+                    message_type=message_type,
                 )
-                _save_to_telegrambot_db(message.message_id, int(chat_id), text, message_type or "text")
-            return (message.message_id, int(chat_id))
-    except Exception as e:
-        logger.error(f"Error sending to Telegram: {e}")
-        if photo and text:
-            logger.warning("Photo failed; retrying Telegram notification as text")
-            return await send_telegram_message(
-                token=token,
-                chat_id=chat_id,
-                text=text,
-                photo=None,
-                save_to_db=save_to_db,
-                message_type=message_type,
-            )
-        return None
+            return None
 
 
 async def delete_telegram_message(
@@ -253,7 +260,36 @@ async def reply_photo_safe(
     save_to_db: bool = True,
     reply_markup=None,
 ) -> Message:
-    reply_msg = await message.reply_photo(photo, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+    # ponytail: se photo é URL, baixar antes — Telegram rejeita URLs de sites
+    # com hotlink-protection ("Failed to get http url content")
+    temp_path = None
+    if isinstance(photo, str) and photo.startswith(("http://", "https://")):
+        try:
+            import httpx
+
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                resp = await client.get(photo)
+                resp.raise_for_status()
+            import os
+            import tempfile
+
+            ext = os.path.splitext(photo.split("?")[0])[1][:5] or ".jpg"
+            fd, temp_path = tempfile.mkstemp(suffix=ext)
+            with os.fdopen(fd, "wb") as f:
+                f.write(resp.content)
+            photo = temp_path
+        except Exception:
+            pass  # cai no upload por URL original
+    try:
+        reply_msg = await message.reply_photo(photo, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+    finally:
+        if temp_path:
+            import os
+
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
     if save_to_db and reply_msg:
         from_user = None

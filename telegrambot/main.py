@@ -27,6 +27,7 @@ from telegrambot.handlers.commands import (
     search_image_callback,
     tldr,
     falar,
+    fakecs,
 )
 from telegrambot.handlers.sticker import sticker, sticker_photo_filter, sticker_cmd_filter, sticker_media_filter, delete_sticker
 from telegrambot.handlers.errors import error_handler
@@ -76,6 +77,7 @@ def main() -> None:
     application.add_handler(CommandHandler("sticker", sticker))
     application.add_handler(CommandHandler("delsticker", delete_sticker))
     application.add_handler(CommandHandler("falar", falar))
+    application.add_handler(CommandHandler("fakecs", fakecs))
     # /sticker com foto anexada (caption)
     application.add_handler(
         MessageHandler(sticker_photo_filter, sticker)

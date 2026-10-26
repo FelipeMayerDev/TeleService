@@ -55,11 +55,11 @@ def get_game_image(game: str, gameid: str | None) -> str | None:
         except Exception:
             pass
 
+    # ponytail: sem pin em IMAGE_CACHE aqui — URL de terceiro morre e o pin
+    # travava o jogo sem imagem pra sempre; o cache do SerpProvider segura
+    # a quota e sorteia outra URL a cada notificação
     try:
-        url = SerpProvider().search_image(image=f"Gameplay {game}", use_cache=True)
-        if url:
-            IMAGE_CACHE[game] = url
-            return url
+        return SerpProvider().search_image(image=f"Gameplay {game}", use_cache=True)
     except Exception as e:
         print(f"Error searching image: {e}")
 

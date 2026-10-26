@@ -1,6 +1,7 @@
 services:
   discordbot:
     restart: unless-stopped
+    container_name: teleservice-discordbot
     build:
       context: .
       dockerfile: discordbot/Dockerfile
@@ -11,9 +12,16 @@ services:
       - ./database.sqlite:/app/database.sqlite
       - ./database.sqlite:/app/telegrambot/database.sqlite
       - ./database.sqlite:/app/discordbot/database.sqlite
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   telegrambot:
     restart: unless-stopped
+    container_name: teleservice-telegrambot
     build:
       context: .
       dockerfile: telegrambot/Dockerfile
@@ -24,13 +32,21 @@ services:
       - ./database.sqlite:/app/telegrambot/database.sqlite
       - ./telegrambot/handlers/sticker.py:/app/telegrambot/handlers/sticker.py:ro
       - ./telegrambot/main.py:/app/telegrambot/main.py:ro
+      - ./shared.py:/app/shared.py:ro
       - ./instagram-cookies.txt:/app/instagram-cookies.txt
       - ./steam/cs2_1.jpg:/app/steam/cs2_1.jpg:ro
       - ./steam/cs2_2.jpg:/app/steam/cs2_2.jpg:ro
       - rembg-model:/root/.u2net
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   steam:
     restart: unless-stopped
+    container_name: teleservice-steam
     build:
       context: .
       dockerfile: steam/Dockerfile
@@ -40,6 +56,12 @@ services:
       - ./database.sqlite:/app/database.sqlite
       - ./database.sqlite:/app/telegrambot/database.sqlite
       - ./database.sqlite:/app/steam/database.sqlite
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 volumes:
   telegrambot-db:
