@@ -6,9 +6,9 @@ import sys
 from pathlib import Path
 from unittest import mock
 
-sys.path.insert(0, str(Path(__file__).parent / "discordbot"))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from handlers.github_issue import IssueError, create_issue, issue_body
+from providers.github import IssueError, create_issue, issue_body
 
 
 class FakeResponse:
@@ -42,13 +42,13 @@ class FakeSession:
 
 def run(response):
     session = FakeSession(response)
-    with mock.patch("handlers.github_issue.aiohttp.ClientSession", return_value=session):
+    with mock.patch("providers.github.aiohttp.ClientSession", return_value=session):
         return asyncio.run(create_issue("tok", "dona/repo", "  Bug no PiP ", "corpo")), session
 
 
 def test_issue():
-    assert issue_body("  trava ao abrir  ", "Ana", "geral") == "trava ao abrir\n\n---\n_Aberta por **Ana** pelo Discord (#geral)._"
-    assert issue_body(None, "Ana", "geral") == "_Aberta por **Ana** pelo Discord (#geral)._"
+    assert issue_body("  trava ao abrir  ", "Ana", "Discord (#geral)") == "trava ao abrir\n\n---\n_Aberta por **Ana** pelo Discord (#geral)._"
+    assert issue_body(None, "Ana", "Telegram") == "_Aberta por **Ana** pelo Telegram._"
 
     url, session = run(FakeResponse(201, {"html_url": "https://github.com/dona/repo/issues/7"}))
     assert url == "https://github.com/dona/repo/issues/7"

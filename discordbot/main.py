@@ -18,6 +18,7 @@ from PIL import Image
 from config import DISCORD_TOKEN, GITHUB_ISSUE_REPO, GITHUB_TOKEN, PROFILES, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from domain import claim_game_notification, init_database
 from providers import SerpProvider
+from providers.github import IssueError, create_issue, issue_body
 
 # Load Opus codec for voice connections
 if not discord.opus.is_loaded():
@@ -30,7 +31,6 @@ if not discord.opus.is_loaded():
     except Exception as e:
         print(f'WARNING: Failed to load Opus: {e}')
 from handlers import music_commands, VoiceStateHandler
-from handlers.github_issue import IssueError, create_issue, issue_body
 from handlers.online_status import get_online_users_with_status
 from shared import discord_channel_send_text_safe, send_telegram_message
 from telegram import Bot
@@ -126,7 +126,8 @@ async def issue_command(
         await interaction.response.send_message("O /issue ainda não tem token do GitHub configurado.", ephemeral=True)
         return
     await interaction.response.defer(thinking=True)
-    body = issue_body(descricao, interaction.user.display_name, getattr(interaction.channel, "name", "?"))
+    channel = getattr(interaction.channel, "name", "?")
+    body = issue_body(descricao, interaction.user.display_name, f"Discord (#{channel})")
     try:
         url = await create_issue(GITHUB_TOKEN, GITHUB_ISSUE_REPO, titulo, body)
     except IssueError as exc:

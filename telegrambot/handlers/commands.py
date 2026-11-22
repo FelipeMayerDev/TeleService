@@ -582,3 +582,32 @@ async def fakecs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             pass
     except Exception as e:
         await message.reply_text(f"Erro: {e}")
+
+
+async def issue(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/issue <título> na primeira linha; as linhas seguintes viram a descrição. Só o dono."""
+    from config import GITHUB_ISSUE_REPO, GITHUB_TOKEN, ISSUE_OWNER_ID
+    from providers.github import IssueError, create_issue, issue_body
+
+    message = update.message
+    if not message:
+        return
+    if not update.effective_user or update.effective_user.id != ISSUE_OWNER_ID:
+        await reply_text_safe(message, "Só o dono do bot pode abrir issues por aqui.")
+        return
+    parts = (message.text or "").split(None, 1)
+    title, _, description = (parts[1] if len(parts) > 1 else "").partition("\n")
+    if not title.strip():
+        await reply_text_safe(message, "Uso: /issue <título>, com a descrição opcional nas linhas seguintes.")
+        return
+    if not GITHUB_TOKEN:
+        await reply_text_safe(message, "O /issue ainda não tem token do GitHub configurado.")
+        return
+    body = issue_body(description[:4000], update.effective_user.full_name, "Telegram")
+    try:
+        url = await create_issue(GITHUB_TOKEN, GITHUB_ISSUE_REPO, title[:200], body)
+    except IssueError as exc:
+        logger.warning("Issue creation failed: %s", exc)
+        await reply_text_safe(message, f"Não consegui criar a issue: {exc}.")
+        return
+    await reply_text_safe(message, f"Issue criada: {url}")

@@ -1,4 +1,4 @@
-"""/issue: abre uma issue no GitHub do projeto a partir do Discord."""
+"""/issue dos bots (Discord e Telegram): abre uma issue no GitHub do projeto."""
 
 import aiohttp
 
@@ -15,8 +15,8 @@ class IssueError(Exception):
     pass
 
 
-def issue_body(description: str | None, author: str, channel: str) -> str:
-    footer = f"_Aberta por **{author}** pelo Discord (#{channel})._"
+def issue_body(description: str | None, author: str, origin: str) -> str:
+    footer = f"_Aberta por **{author}** pelo {origin}._"
     return f"{description.strip()}\n\n---\n{footer}" if description and description.strip() else footer
 
 
