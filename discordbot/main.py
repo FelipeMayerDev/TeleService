@@ -12,9 +12,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import discord
 import discord.opus
+from discord import app_commands
 import requests
 from PIL import Image
-from config import DISCORD_TOKEN, PROFILES, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from config import DISCORD_TOKEN, GITHUB_ISSUE_REPO, GITHUB_TOKEN, PROFILES, TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from domain import claim_game_notification, init_database
 from providers import SerpProvider
 
@@ -29,6 +30,7 @@ if not discord.opus.is_loaded():
     except Exception as e:
         print(f'WARNING: Failed to load Opus: {e}')
 from handlers import music_commands, VoiceStateHandler
+from handlers.github_issue import IssueError, create_issue, issue_body
 from handlers.online_status import get_online_users_with_status
 from shared import discord_channel_send_text_safe, send_telegram_message
 from telegram import Bot
@@ -108,11 +110,47 @@ intents.members = True
 intents.presences = True
 
 client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
+_commands_synced = False
+
+
+@tree.command(name="issue", description="Abre uma issue no GitHub do FockyTV")
+@app_commands.describe(titulo="Resumo do problema ou da ideia", descricao="Detalhes: o que aconteceu, como reproduzir")
+@app_commands.guild_only()
+async def issue_command(
+    interaction: discord.Interaction,
+    titulo: app_commands.Range[str, 1, 200],
+    descricao: app_commands.Range[str, 1, 4000] | None = None,
+):
+    if not GITHUB_TOKEN:
+        await interaction.response.send_message("O /issue ainda não tem token do GitHub configurado.", ephemeral=True)
+        return
+    await interaction.response.defer(thinking=True)
+    body = issue_body(descricao, interaction.user.display_name, getattr(interaction.channel, "name", "?"))
+    try:
+        url = await create_issue(GITHUB_TOKEN, GITHUB_ISSUE_REPO, titulo, body)
+    except IssueError as exc:
+        logger.warning("Issue creation failed: %s", exc)
+        await interaction.followup.send(f"Não consegui criar a issue: {exc}.")
+        return
+    logger.info("Issue created by %s: %s", interaction.user, url)
+    await interaction.followup.send(f"Issue criada: {url}")
 
 
 @client.event
 async def on_ready():
     logger.info(f"Logged in as {client.user}")
+
+    # Slash commands por servidor: aparecem na hora (o registro global demora até 1 h).
+    global _commands_synced
+    if not _commands_synced:
+        _commands_synced = True
+        for guild in client.guilds:
+            tree.copy_global_to(guild=guild)
+            try:
+                await tree.sync(guild=guild)
+            except discord.HTTPException as exc:
+                logger.error("Slash command sync failed for %s: %s", guild.id, exc)
     logger.info("Music player commands loaded")
 
     global voice_state_handler
